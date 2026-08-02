@@ -13,4 +13,8 @@ diag_*.py
 exp_*.py
 measure_shot.py
 static/index.html.bak.pre-*
-build/, dist/, *.spec, *.log
+# PyInstaller 构建产物（不入库）
+build/
+dist/
+*.spec
+*.log
