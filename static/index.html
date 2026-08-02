@@ -404,7 +404,7 @@ header, #layout, footer#statusBar { position: relative; z-index: 1; }
   background: linear-gradient(120deg, rgba(201, 179, 126, .08) 0%, rgba(201, 179, 126, .03) 38%, rgba(201, 179, 126, .05) 100%), var(--glass);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   backdrop-filter: blur(14px) saturate(1.4);
-  border-top: 1px solid var(--border);
+  border-top: 1.5px solid var(--border-strong);  /* 边界加粗提亮：明确编辑条区域范围（用户反馈边界不可见） */
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 -2px 18px rgba(0, 0, 0, .22);
   padding: 10px 16px; flex-shrink: 0; flex-direction: column;
   height: auto; max-height: 70vh; overflow-y: auto;   /* 高度可被分割条调整 */
@@ -435,7 +435,12 @@ header, #layout, footer#statusBar { position: relative; z-index: 1; }
 #editorTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
 #editorTitle { font-weight: 600; font-size: 13.5px; letter-spacing: .01em; }
 #editorTitle .sub { color: var(--text-sub); font-weight: var(--fw-base); font-size: 12px; margin-left: 6px; }
-#editorTags { display: flex; flex-wrap: wrap; gap: 4px 5px; overflow-y: auto; max-height: 150px; min-height: 72px; padding: 4px 2px; }  /* min-height：标签少时也保持视觉高度，不显窄 */
+#editorTags {
+  display: flex; flex-wrap: wrap; gap: 4px 5px; overflow-y: auto;
+  min-height: 72px; max-height: 40vh; padding: 6px 8px;
+  border: 1px solid var(--border-strong); border-radius: 6px;  /* 可见边界：标签展示区轮廓清晰 */
+  resize: vertical;  /* 右下角拖拽手柄：鼠标移到边缘可调节框高度 */
+}
 #addTagInput {
   padding: 5px 12px; border-radius: 6px; border: 1px solid var(--chip-border);
   background: var(--bg-input); color: var(--text); font-size: var(--fs-base); width: 200px;
@@ -444,7 +449,8 @@ header, #layout, footer#statusBar { position: relative; z-index: 1; }
 #screenBox {
   display: none; background: var(--warn-bg); border: 1px dashed var(--warn);
   border-radius: var(--radius-md); padding: 12px 16px; margin-top: 10px;
-  min-height: 64px; max-height: 200px; overflow-y: auto;  /* min-height：丢弃区单行也保持视觉高度 */
+  min-height: 64px; max-height: 60vh; overflow-y: auto;  /* min-height：丢弃区单行也保持视觉高度 */
+  resize: vertical;  /* 右下角拖拽手柄：鼠标移到边缘可调节框高度 */
 }
 #screenBox.show { display: block; animation: slideUp .26s var(--ease-out); }
 #screenBox .st-title { color: var(--warn); font-weight: 600; margin-bottom: 6px; font-size: var(--fs-base); }
@@ -1766,29 +1772,43 @@ function screenSelected() {
   screenCommonTags(pool, shown);
 }
 
-// 批量初筛：一次判定当前显示标签，verdicts 应用到所有选中图片（删除→各自丢弃区）
+// 批量初筛：标签过多时分批判定（每批最多 100 个，防 prompt 超限导致失败），
+// verdicts 合并后应用到所有选中图片（删除→各自丢弃区）
 function screenCommonTags(sel, commonTags) {
   const userPrompt = getLlmUserPrompt();
-  api("/api/screen", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({images: [sel[0].path], tags: commonTags, user_prompt: userPrompt, system_prompt: getActiveLlmPrompt()}) }).then(r => {
-    if (r.error) { setMsg(`${r.error}`); return; }
-    const res = r.results && r.results[0];
-    if (!res || !res.ok) { setMsg("初筛失败"); return; }
-    const dels = (res.verdicts || []).filter(v => v.action === "delete").map(v => v.tag);
-    if (dels.length) {
-      pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
-      sel.forEach(img => {
-        const toDrop = dels.filter(t => img.tags.includes(t));
-        if (!toDrop.length) return;
-        img.tags = img.tags.filter(t => !toDrop.includes(t));
-        state.discardMap[img.path] = [...(state.discardMap[img.path] || []), ...toDrop];
-      });
+  const BATCH = 100;  // 每批标签数上限（557 标签会拆成 6 批）
+  const batches = [];
+  for (let i = 0; i < commonTags.length; i += BATCH) batches.push(commonTags.slice(i, i + BATCH));
+  const allVerdicts = [];
+  const runBatch = (bi) => {
+    if (bi >= batches.length) {
+      // 全部批次完成 → 合并 verdicts 统一应用
+      const dels = allVerdicts.filter(v => v.action === "delete").map(v => v.tag);
+      if (dels.length) {
+        pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+        sel.forEach(img => {
+          const toDrop = dels.filter(t => img.tags.includes(t));
+          if (!toDrop.length) return;
+          img.tags = img.tags.filter(t => !toDrop.includes(t));
+          state.discardMap[img.path] = [...(state.discardMap[img.path] || []), ...toDrop];
+        });
+      }
+      // 标记已筛（防呆）：池内所有图写入记录，快照=判定时的标签集合
+      sel.forEach(img => { state.screenMap[img.path] = {tags: commonTags, verdicts: allVerdicts}; });
+      renderGrid(); renderEditor();
+      setMsg(`初筛完成：判定 ${commonTags.length} 个标签，${dels.length} 个已移入丢弃区${batches.length > 1 ? `（${batches.length} 批）` : ""}`);
+      return;
     }
-    // 标记已筛（防呆）：池内所有图写入记录，快照=判定时的标签集合；
-    // 用户不再编辑则稳定跳过；标签编辑/放回后变化 → 自动重筛
-    sel.forEach(img => { state.screenMap[img.path] = {tags: commonTags, verdicts: res.verdicts || []}; });
-    renderGrid(); renderEditor();
-    setMsg(`初筛完成：判定 ${commonTags.length} 个标签，${dels.length} 个已移入丢弃区`);
-  }).catch(e => { setMsg("初筛请求失败: " + e.message); });
+    setMsg(`正在初筛（${commonTags.length} 标签，${batches.length - bi} 批剩余）...`);
+    api("/api/screen", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({images: [sel[0].path], tags: batches[bi], user_prompt: userPrompt, system_prompt: getActiveLlmPrompt()}) }).then(r => {
+      if (r.error) { setMsg(`${r.error}`); return; }
+      const res = r.results && r.results[0];
+      if (!res || !res.ok) { setMsg("初筛失败"); return; }
+      allVerdicts.push(...(res.verdicts || []));
+      runBatch(bi + 1);
+    }).catch(e => { setMsg("初筛请求失败: " + e.message); });
+  };
+  runBatch(0);
 }
 
 // ---------- 设置 ----------
@@ -2184,6 +2204,7 @@ function bindDelegates() {
     const onMove = ev => {
       const h = Math.min(window.innerHeight * 0.75, Math.max(100, startH + (startY - ev.clientY)));
       editor.style.height = h + "px";
+      editor.style.maxHeight = h + "px";  // 同步覆盖 CSS 70vh 上限：内容再多也按设定高度滚动（修复拖高无效）
     };
     const onUp = () => {
       hs.classList.remove("resizing");
