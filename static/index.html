@@ -435,7 +435,7 @@ header, #layout, footer#statusBar { position: relative; z-index: 1; }
 #editorTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
 #editorTitle { font-weight: 600; font-size: 13.5px; letter-spacing: .01em; }
 #editorTitle .sub { color: var(--text-sub); font-weight: var(--fw-base); font-size: 12px; margin-left: 6px; }
-#editorTags { display: flex; flex-wrap: wrap; gap: 4px 5px; overflow-y: auto; max-height: 150px; padding: 2px; }
+#editorTags { display: flex; flex-wrap: wrap; gap: 4px 5px; overflow-y: auto; max-height: 150px; min-height: 72px; padding: 4px 2px; }  /* min-height：标签少时也保持视觉高度，不显窄 */
 #addTagInput {
   padding: 5px 12px; border-radius: 6px; border: 1px solid var(--chip-border);
   background: var(--bg-input); color: var(--text); font-size: var(--fs-base); width: 200px;
@@ -443,7 +443,8 @@ header, #layout, footer#statusBar { position: relative; z-index: 1; }
 }
 #screenBox {
   display: none; background: var(--warn-bg); border: 1px dashed var(--warn);
-  border-radius: var(--radius-md); padding: 10px 14px; margin-top: 8px; max-height: 200px; overflow-y: auto;
+  border-radius: var(--radius-md); padding: 12px 16px; margin-top: 10px;
+  min-height: 64px; max-height: 200px; overflow-y: auto;  /* min-height：丢弃区单行也保持视觉高度 */
 }
 #screenBox.show { display: block; animation: slideUp .26s var(--ease-out); }
 #screenBox .st-title { color: var(--warn); font-weight: 600; margin-bottom: 6px; font-size: var(--fs-base); }
