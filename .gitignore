@@ -1,0 +1,15 @@
+# 本地运行时数据（含 API Key 密文、翻译缓存、备份、缩略图）——不入库
+config.json
+cache.json
+backups/
+thumbs/
+test_data/
+__pycache__/
+*.pyc
+shot_*.png
+shot_*.py
+verify_*.py
+diag_*.py
+exp_*.py
+measure_shot.py
+static/index.html.bak.pre-*

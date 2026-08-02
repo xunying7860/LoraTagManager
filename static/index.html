@@ -1,0 +1,2256 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0a0c'/%3E%3Ctext x='16' y='22' font-size='14' text-anchor='middle' fill='%23c9b37e'%3E%E6%A0%87%3C/text%3E%3C/svg%3E" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LoRA 打标管理器 · Lora Tag Manager</title>
+<style>
+/* ============================================================
+ * LoRA 打标管理器 · 视觉设计系统 v3（高级感：Linear/Stripe 风格）
+ * 设计基调：暗色 = 蓝紫深灰层次 + 微弱光晕/网格；亮色 = 蓝调浅灰
+ * 玻璃拟态：面板半透明 + backdrop blur + 细边框 + 分层阴影
+ * ⚠️ 红线：.chip 严禁添加任何 transition/animation（SortableJS
+ *    拖拽 ghost 滞后 bug 的根源），ghost 规则不得删除
+ * ============================================================ */
+
+/* ---------- 中性设计令牌（不随主题变化） ---------- */
+:root {
+  /* 字体栈：OPPO Sans（本地开源，修长优雅）→ 思源黑体 → 等线 → 雅黑 */
+  --font-sans: "OPPO Sans", "Noto Sans SC", "DengXian", "Microsoft YaHei UI",
+               "Microsoft YaHei", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", "Consolas", "Courier New", monospace;
+
+  /* 圆角层级 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* 动效曲线与时长 */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --dur-fast: .16s;
+  --dur-med: .2s;
+
+  /* 主渐变（优雅香槟金：哑光低饱和，克制不艳） */
+  --grad-accent: linear-gradient(135deg, #e8dcc0 0%, #c9b37e 50%, #a08c5e 100%);
+
+  /* 玻璃拟态：半透明面板色（自动跟随 --bg-panel 主题解析） */
+  --glass: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+
+  /* 亮色默认值（防 JS 未初始化时异常）：暖白纸感 + 金棕点缀 */
+  --bg: #faf8f2; --bg-panel: #ffffff; --bg-elev: #ffffff; --bg-hover: #f4f0e6; --bg-input: #f7f4ec;
+  --text: #2b2620; --text-sub: #7d766a; --text-faint: #a9a294;
+  --border: #e8e2d4; --border-strong: #d2c8b0;
+  --accent: #a08c5e; --accent-2: #c9b37e; --accent-glow: rgba(160, 140, 94, .16);
+  --chip-bg: #f5f1e7; --chip-border: #e4dcc8;
+  /* 界面字号（设置里可调）：--fs-base 正文 / --fs-sm 次要 / --fs-xs 微信息。默认=中 15px */
+  --fs-base: 15px; --fs-sm: 13px; --fs-xs: 12px;
+  --ok: #5a8f6e; --ok-bg: #e9f3ec; --warn: #a08c5e; --warn-bg: #faf5e6; --danger: #b85c5c; --danger-bg: #f9ecec;
+  --shadow: 0 2px 10px rgba(70, 55, 25, .07);
+  --grid-bg: #f7f4ec; --grid-line: rgba(90, 70, 30, .04);
+  --glow-1: rgba(201, 179, 126, .10); --glow-2: rgba(160, 140, 94, .09);
+  --glow-3: rgba(232, 220, 192, .05);
+  --shadow-xs: 0 1px 2px rgba(70, 55, 25, .05);
+  --shadow-sm: 0 2px 8px rgba(70, 55, 25, .07);
+  --shadow-md: 0 8px 24px rgba(70, 55, 25, .11);
+  --shadow-lg: 0 20px 56px rgba(70, 55, 25, .17);
+  color-scheme: light;
+}
+
+/* ---------- 亮色主题 ---------- */
+[data-theme="light"] {
+  --fw-base: 480;  /* 亮色下正文/标签字重加粗一档（标题除外） */
+  --chip-tint: 70%;  /* 亮色：chip 分组色混合比例提高（浅底上更亮，接近画风青色亮度） */
+  --lib-tint: 60%;
+  --bg: #f5f7fb; --bg-panel: #ffffff; --bg-elev: #ffffff; --bg-hover: #eef2fa; --bg-input: #f3f5fa;
+  --text: #1c2230; --text-sub: #6b7280; --text-faint: #9aa3b8;
+  --border: #e3e8f2; --border-strong: #c9d3e6;
+  --accent: #4f6ef7; --accent-2: #7c5cf5; --accent-glow: rgba(79, 110, 247, .18);
+  --chip-bg: #eef1f9; --chip-border: #d9e0ef;
+  --ok: #1e9e5a; --ok-bg: #e6f7ee; --warn: #b97d1f; --warn-bg: #fdf3e2; --danger: #d94a4f; --danger-bg: #fdecec;
+  --shadow: 0 2px 10px rgba(20, 30, 60, .08);
+  --grid-bg: #eef1f6; --grid-line: rgba(40, 60, 110, .035);
+  --glow-1: rgba(79, 110, 247, .12); --glow-2: rgba(124, 92, 245, .10);
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, .05);
+  --shadow-sm: 0 2px 8px rgba(16, 24, 40, .07);
+  --shadow-md: 0 6px 20px rgba(16, 24, 40, .10);
+  --shadow-lg: 0 18px 48px rgba(16, 24, 40, .16);
+  color-scheme: light;
+}
+
+[data-theme="light"] body { font-weight: 450; }  /* 亮色：正文整体加粗一档（标题除外） */
+/* 字号档位：data-font 属性由设置控制（html 元素）：极小13 / 小14 / 中15(默认) / 大16 */
+[data-font="xs"] { --fs-base: 13px; --fs-sm: 11.5px; --fs-xs: 11px; }
+[data-font="sm"] { --fs-base: 14px; --fs-sm: 12px; --fs-xs: 11.5px; }
+[data-font="lg"] { --fs-base: 16px; --fs-sm: 14px; --fs-xs: 12.5px; }
+
+/* ---------- 暗色主题（黑金：近黑背景 + 哑光香槟金点缀，优雅克制） ---------- */
+[data-theme="dark"] {
+  --fw-base: 400;  /* 暗色正文/标签字重 */
+  --chip-tint: 45%;  /* 暗色：chip 分组色混合比例 */
+  --lib-tint: 36%;
+  --bg: #0a0a0c; --bg-panel: #121215; --bg-elev: #1a1a1f; --bg-hover: #202027; --bg-input: #0d0d10;
+  --text: #ece7da; --text-sub: #a49e8f; --text-faint: #6f6a5c;
+  /* 边框线统一为暖调暗金（低透明香槟金），告别冷灰 */
+  --border: rgba(201, 179, 126, .16); --border-strong: rgba(201, 179, 126, .30);
+  --accent: #c9b37e; --accent-2: #d8c9a3; --accent-glow: rgba(201, 179, 126, .20);
+  --chip-bg: #1c1c24; --chip-border: rgba(201, 179, 126, .14);
+  --ok: #8fbb9d; --ok-bg: rgba(143, 187, 157, .12);
+  --warn: #c9b37e; --warn-bg: rgba(201, 179, 126, .12);
+  --danger: #d98f8f; --danger-bg: rgba(217, 143, 143, .12);
+  --shadow: 0 2px 12px rgba(0, 0, 0, .35);
+  --grid-bg: #0d0d10; --grid-line: rgba(255, 255, 255, .028);
+  --glow-1: rgba(201, 179, 126, .14); --glow-2: rgba(160, 140, 94, .11);
+  --glow-3: rgba(232, 220, 192, .06);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .30);
+  --shadow-sm: 0 3px 10px rgba(0, 0, 0, .38);
+  --shadow-md: 0 10px 28px rgba(0, 0, 0, .48);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, .60);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+/* ---------- 本地开源字体：OPPO Sans（SIL OFL 1.1，字形修长优雅） ---------- */
+@font-face {
+  font-family: "OPPO Sans";
+  src: url("fonts/OPPOSans-L.ttf") format("truetype");
+  font-weight: 100 299; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "OPPO Sans";
+  src: url("fonts/OPPOSans-R.ttf") format("truetype");
+  font-weight: 300 599; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "OPPO Sans";
+  src: url("fonts/OPPOSans-B.ttf") format("truetype");
+  font-weight: 600 799; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "OPPO Sans";
+  src: url("fonts/OPPOSans-H.ttf") format("truetype");
+  font-weight: 800 900; font-style: normal; font-display: swap;
+}
+/* Firefox 细滚动条 */
+* { scrollbar-width: thin; scrollbar-color: var(--chip-border) transparent; }
+/* Chromium/Edge 滚动条美化：细窄 + 圆角滑块 + hover 高亮 */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--chip-border); border-radius: 999px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+html, body { height: 100%; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px; line-height: 1.55; letter-spacing: .01em;
+  color: var(--text);
+  /* 主背景：三光晕氛围（右上蓝、左下紫、顶部青） + 细网格质感 */
+  background:
+    radial-gradient(1100px 700px at 88% -14%, var(--glow-1), transparent 60%),
+    radial-gradient(1000px 680px at -8% 110%, var(--glow-2), transparent 60%),
+    radial-gradient(720px 360px at 50% -140px, var(--glow-3), transparent 70%),
+    var(--bg);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+::selection { background: var(--accent-glow); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ========== 顶栏（玻璃拟态） ========== */
+header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.5);
+  backdrop-filter: blur(14px) saturate(1.5);
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 1px 8px rgba(0, 0, 0, .18);
+  flex-shrink: 0; z-index: 10;
+}
+header h1 {
+  font-size: 20px; font-weight: 800; white-space: nowrap;
+  letter-spacing: .02em; display: flex; align-items: center; gap: 8px;
+}
+header h1 .brand {
+  background: var(--grad-accent);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter: saturate(.7);  /* 标题金降饱和，避免油腻 */
+}
+header h1 small { color: var(--text-sub); font-weight: 400; margin-left: 2px; font-size: 11px; letter-spacing: .06em; }
+
+/* 按钮：150-200ms 微交互（上浮 + 阴影 + 按下缩放） */
+.btn {
+  background: linear-gradient(180deg, var(--bg-elev), var(--chip-bg));
+  color: var(--text);
+  border: 1px solid var(--chip-border);
+  padding: 7px 15px; border-radius: 6px;
+  cursor: pointer; font-size: var(--fs-base); font-weight: 500;
+  white-space: nowrap; box-shadow: var(--shadow-xs);
+  transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease,
+              color var(--dur-fast) ease, transform var(--dur-fast) ease,
+              box-shadow var(--dur-fast) ease, filter var(--dur-fast) ease;
+}
+.btn:hover {
+  background: var(--bg-hover); border-color: var(--border-strong);
+  transform: translateY(-1px); box-shadow: var(--shadow-sm);
+}
+.btn:active { transform: translateY(0) scale(.97); box-shadow: var(--shadow-xs); }
+.btn.primary {
+  background: linear-gradient(180deg, var(--bg-elev), var(--chip-bg));
+  border-color: var(--accent); color: var(--accent-2);
+  box-shadow: none;
+}
+.btn.primary:hover {
+  background: var(--bg-hover); border-color: var(--accent-2);
+  box-shadow: 0 3px 12px var(--accent-glow); transform: translateY(-1px);
+}
+.btn.primary:active { transform: translateY(0) scale(.97); }
+.btn.danger { background: var(--danger-bg); border-color: transparent; color: var(--danger); }
+.btn.danger:hover { background: var(--danger); border-color: var(--danger); color: #fff; box-shadow: 0 3px 14px var(--danger-glow, rgba(242, 109, 109, .32)); }
+.btn.danger:active { transform: translateY(0) scale(.97); }
+.btn:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+.folder-input {
+  flex: 1; min-width: 120px; padding: 7px 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--chip-border); background: var(--bg-input); color: var(--text);
+  font-size: 13px;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+#themeToggle { font-size: 15px; padding: 6px 10px; }
+.spacer { flex: 1; }
+
+/* 输入/下拉框统一聚焦态（跟随主题，暗色不白底） */
+.folder-input:focus, #tagSearch:focus, .lib-search:focus, .llm-prompt-input:focus,
+#addTagInput:focus, .form-row input:focus, .form-row select:focus, #browsePath:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* 氛围光层：中心暗金主光 + 右上香槟金 / 左下暗金，透过半透明面板与网格显现 */
+#ambient {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  background:
+    radial-gradient(1000px 640px at 50% 8%, rgba(201, 179, 126, .06), transparent 64%),
+    radial-gradient(900px 620px at 85% -10%, rgba(201, 179, 126, .10), transparent 62%),
+    radial-gradient(820px 640px at -5% 106%, rgba(160, 140, 94, .08), transparent 62%),
+    radial-gradient(560px 280px at 50% -130px, rgba(232, 220, 192, .04), transparent 70%);
+}
+/* 鼠标跟随光晕：柔和金色光斑平滑跟随指针（背景互动），不挡任何操作 */
+#mouseGlow {
+  position: fixed; left: -9999px; top: -9999px; z-index: 0; pointer-events: none;
+  width: 560px; height: 560px; margin: -280px 0 0 -280px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(201, 179, 126, .12), rgba(201, 179, 126, .04) 45%, transparent 70%);
+}
+/* 所有面板置于光层之上，背景半透明让光晕透出 */
+header, #layout, footer#statusBar { position: relative; z-index: 1; }
+#editor { position: relative; z-index: 1; }
+
+/* ========== 主体布局 ========== */
+#layout { flex: 1; display: flex; min-height: 0; }
+#sidebar {
+  width: 300px; min-width: 260px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+/* 主区域：网格纹理 + 高透明底（让氛围光/鼠标光斑清晰透出），卡片浮于其上 */
+#main {
+  flex: 1; overflow-y: auto; padding: 14px;
+  background:
+    radial-gradient(820px 560px at 50% -20%, rgba(201, 179, 126, .07), transparent 62%),
+    repeating-linear-gradient(0deg, var(--grid-line) 0 1px, transparent 1px 28px),
+    repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 28px),
+    color-mix(in srgb, var(--grid-bg) 42%, transparent);
+}
+
+/* ========== 标签面板 ========== */
+.side-section { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.side-title {
+  font-size: 11.5px; font-weight: 600; letter-spacing: .06em;
+  color: var(--text-sub); margin-bottom: 8px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+#commonWrap { background: var(--warn-bg); }
+#commonTags { display: flex; flex-wrap: wrap; gap: 6px; max-height: 160px; overflow-y: auto; }
+#tagSearch {
+  width: 100%; padding: 6px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--chip-border); background: var(--bg-input); color: var(--text);
+  margin-bottom: 8px;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+#allTags { flex: 1; overflow-y: auto; padding: 6px 14px 60px; }
+.tag-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--radius-sm);
+  cursor: pointer; user-select: none; font-size: var(--fs-base); line-height: 1.3;
+  transition: background-color .13s ease;
+}
+.tag-row:hover { background: var(--bg-hover); }
+.tag-row.active {
+  background: var(--grad-accent); color: #fff;
+  box-shadow: 0 2px 10px var(--accent-glow);
+}
+/* 暗色主题：选中态改克制暗金（金色渐变实底在暗色下太刺眼，亮色保留渐变） */
+[data-theme="dark"] .tag-row.active {
+  background: rgba(201, 179, 126, .13);
+  color: var(--accent-2);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+[data-theme="dark"] .tag-row.active .tag-zh { color: rgba(216, 201, 163, .8); }
+[data-theme="dark"] .tag-row.active .tag-count { background: rgba(201, 179, 126, .16); border-color: transparent; color: var(--accent-2); }
+.tag-row .tag-text { flex: 1; min-width: 0; }
+.tag-row .tag-en { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--fw-base); letter-spacing: .01em; }
+.tag-row .tag-zh { display: block; color: var(--text-sub); font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag-row.active .tag-zh { color: rgba(255, 255, 255, .75); }
+.tag-row .tag-count {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+  font-size: var(--fs-xs); color: var(--text-sub); background: var(--chip-bg);
+  border: 1px solid var(--chip-border); border-radius: 4px; padding: 1px 7px;
+}
+.tag-row.active .tag-count { background: rgba(255, 255, 255, .18); border-color: transparent; color: #fff; }
+
+/* 标签 chip（仿 weilin 风格：分组底色，英文在上 中文在下）
+   ⚠️ 红线：.chip 严禁 transition/animation —— 否则 SortableJS 拖拽
+   ghost 克隆自 .chip，会带着过渡动画滞后于鼠标（旧 bug 根源） */
+.chip {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 3px 22px 3px 10px; border-radius: 6px; font-size: var(--fs-base); border: 1px solid var(--chip-border);
+  background: var(--chip-bg); cursor: pointer; user-select: none;
+  line-height: 1.25; vertical-align: top; position: relative;
+}
+.chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); border-color: var(--accent) !important; }
+.chip .en-line { font-weight: var(--fw-base); letter-spacing: .01em; }
+.chip .zh-line { color: var(--text-sub); font-size: var(--fs-sm); }
+/* ✕ 删除：固定右上角（右侧 padding 22px 预留），永不与中文翻译重叠。
+   hover 反馈：红色实底块 + 放大（明显可感知，无 transition 不影响拖拽） */
+.chip .del { position: absolute; top: 2px; right: 5px; opacity: .5; font-size: 10px; padding: 0 3px; border-radius: 4px; line-height: 1.4; }
+.chip .del:hover { opacity: 1; color: #fff; background: var(--danger); transform: scale(1.2); }
+/* 拖拽排序（SortableJS，仿 weilin 节点）
+   关键：ghost 克隆自 .chip，必须禁掉 transition/animation，
+   否则拖快时 ghost 带过渡动画滞后于鼠标（视觉割裂，实测 400px+） */
+.chip-drag-ghost, .sortable-fallback {
+  opacity: .4; border-style: dashed;
+  transition: none !important;   /* 红线规则：绝不能删 */
+  animation: none !important;
+  will-change: transform, left, top;
+  /* 注意：不能设 transform: none !important —— SortableJS 用 transform:matrix 移动 ghost */
+  box-shadow: none !important;
+}
+.chip-drag-active { cursor: grabbing; }
+.chip-drag-chosen {
+  background: var(--accent) !important; color: #fff !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 4px 14px var(--accent-glow) !important;
+}
+#editorTags .chip { cursor: grab; touch-action: none; -webkit-user-drag: none; }  /* touch-action:none 防触屏滚动劫持；-webkit-user-drag:none 防 fallback 拖拽中触发系统图片拖拽 */
+/* 单击标签进入编辑模式：chip 内替换为输入框 */
+.chip-edit-input {
+  width: 140px; padding: 2px 6px; border-radius: var(--radius-sm); font-size: 12.5px;
+  border: 2px solid var(--accent); background: var(--bg-panel); color: var(--text); outline: none;
+}
+#editorTags .chip:active { cursor: grabbing; }
+
+/* ========== 图片网格（卡片 hover 上浮 + 边框高亮） ========== */
+#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+.card {
+  position: relative; border-radius: var(--radius-lg); overflow: hidden;
+  background: linear-gradient(180deg, var(--bg-elev), var(--bg-panel));
+  border: 1px solid var(--border-strong);
+  cursor: pointer; box-shadow: var(--shadow-sm);
+  transition: transform var(--dur-med) var(--ease-out), box-shadow var(--dur-med) var(--ease-out),
+     border-color var(--dur-med) var(--ease-out), filter var(--dur-med) var(--ease-out);
+}
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md), 0 0 0 1px var(--accent-glow), 0 0 22px var(--accent-glow);
+  border-color: var(--accent);
+}
+.card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow-md); }
+.card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block; background: #1c1b1a; }
+.card .meta {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 8px 6px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, .78)); color: #fff; font-size: 11.5px;
+  display: flex; justify-content: space-between; align-items: center; gap: 4px;
+}
+.card .meta .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-weight: 500; letter-spacing: .01em; }
+.card .badge {
+  font-size: 10px; border-radius: var(--radius-pill); padding: 1px 6px;
+  background: rgba(0, 0, 0, .35); border: 1px solid rgba(255, 255, 255, .08);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+.card .badge.no-txt { background: var(--danger); }
+.card .badge.screen { background: #ff9800; color: #fff; }
+.card .screen-dot {
+  position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%;
+  background: #ff9800; color: #fff; font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .4);
+}
+.card .screen-dot.done { background: rgba(46, 160, 67, .92); }
+.empty-hint { text-align: center; color: var(--text-sub); padding: 60px 20px; font-size: 14px; }
+.empty-hint .big { font-size: 40px; margin-bottom: 12px; }
+
+/* ========== 底部编辑条（玻璃拟态 + 展开动画） ========== */
+#editor {
+  display: none;
+  /* 渐变背景：香槟金微光斜向渐变（黑金主题，克制不油腻） */
+  background: linear-gradient(120deg, rgba(201, 179, 126, .08) 0%, rgba(201, 179, 126, .03) 38%, rgba(201, 179, 126, .05) 100%), var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  border-top: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 -2px 18px rgba(0, 0, 0, .22);
+  padding: 10px 16px; flex-shrink: 0; flex-direction: column;
+  height: auto; max-height: 70vh; overflow-y: auto;   /* 高度可被分割条调整 */
+  position: relative;
+}
+#editor.show { display: flex; animation: editorPop .3s var(--ease-out); }
+/* 首次显示：金色光带从左到右扫过（一次性，快-慢-快节奏但中段不凝滞） */
+#editor.show::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 32%, rgba(201, 179, 126, .12) 50%, transparent 68%);
+  transform: translateX(-120%);
+  animation: editorShine 1.2s cubic-bezier(.2, .7, .8, .3) .12s;
+}
+@keyframes editorShine { to { transform: translateX(120%); } }
+/* 编辑条弹出：上滑 + 淡入 + 轻微缩放（点击图片后明显反馈） */
+@keyframes editorPop {
+  from { opacity: 0; transform: translateY(16px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+/* 标签 chips 依次弹入（stagger）：仅一次性动画，ghost 已由 .chip-drag-ghost 的 animation:none !important 覆盖，不影响拖拽 */
+/* 标签 chips 弹入动效：仅首次打开编辑条时播放（.chip-in 类控制），
+   删除/添加/编辑等重建 chips 不重播，避免"滚动"感 */
+.chip.chip-in { animation: chipIn .5s var(--ease-out) backwards; }
+@keyframes chipIn {
+  from { opacity: 0; transform: translateY(7px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+#editorTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+#editorTitle { font-weight: 600; font-size: 13.5px; letter-spacing: .01em; }
+#editorTitle .sub { color: var(--text-sub); font-weight: var(--fw-base); font-size: 12px; margin-left: 6px; }
+#editorTags { display: flex; flex-wrap: wrap; gap: 4px 5px; overflow-y: auto; max-height: 150px; padding: 2px; }
+#addTagInput {
+  padding: 5px 12px; border-radius: 6px; border: 1px solid var(--chip-border);
+  background: var(--bg-input); color: var(--text); font-size: var(--fs-base); width: 200px;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+#screenBox {
+  display: none; background: var(--warn-bg); border: 1px dashed var(--warn);
+  border-radius: var(--radius-md); padding: 10px 14px; margin-top: 8px; max-height: 200px; overflow-y: auto;
+}
+#screenBox.show { display: block; animation: slideUp .26s var(--ease-out); }
+#screenBox .st-title { color: var(--warn); font-weight: 600; margin-bottom: 6px; font-size: var(--fs-base); }
+
+/* 词库面板展开动画（JS 以 display:block/none 切换，用属性选择器触发） */
+#libPanel { border: 1px solid var(--chip-border); border-radius: var(--radius-md); overflow: hidden; }
+#libPanel[style*="block"] { animation: slideUp .26s var(--ease-out); }
+
+/* ========== 分割条（拖动调整区域大小） ========== */
+#vSplitter {
+  width: 5px; cursor: col-resize; flex-shrink: 0;
+  background: transparent; transition: background .15s; position: relative; z-index: 5;
+}
+#vSplitter:hover, #vSplitter.resizing { background: var(--accent); opacity: .55; }
+#hSplitter {
+  height: 5px; cursor: row-resize; flex-shrink: 0;
+  background: transparent; transition: background .15s; position: relative; z-index: 5;
+}
+#hSplitter:hover, #hSplitter.resizing { background: var(--accent); opacity: .55; }
+body.resizing { user-select: none; cursor: col-resize; }
+
+/* ========== 状态栏（玻璃拟态，数字等宽） ========== */
+footer#statusBar {
+  display: flex; gap: 18px; padding: 6px 16px;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(12px) saturate(1.3);
+  backdrop-filter: blur(12px) saturate(1.3);
+  border-top: 1px solid var(--border); font-size: 12px; color: var(--text-sub); flex-shrink: 0;
+}
+#statusBar span { display: inline-flex; align-items: center; gap: 4px; }
+#statusBar b {
+  color: var(--text); font-weight: 600;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+
+/* ========== 弹窗（遮罩淡入 + 弹窗上浮缩放） ========== */
+#modalRoot {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, .62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  display: none; align-items: center; justify-content: center; z-index: 100;
+}
+#modalRoot.show { display: flex; animation: fadeIn var(--dur-med) ease; }
+.modal {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg); width: 640px; max-width: 92vw;
+  max-height: 82vh; display: flex; flex-direction: column;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), var(--shadow-lg);
+  animation: modalPop .24s var(--ease-out);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+.modal-body { padding: 16px 18px; overflow-y: auto; }
+.modal-body h4 { font-size: 13px; font-weight: 600; color: var(--accent); letter-spacing: .02em; }
+.modal-foot { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+.close-x {
+  cursor: pointer; font-size: 15px; color: var(--text-sub); background: none; border: none;
+  width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: background-color .15s ease, color .15s ease, transform .15s ease;
+}
+.close-x:hover { background: var(--bg-hover); color: var(--text); transform: rotate(90deg); }
+.form-row { margin-bottom: 12px; }
+.form-row label { display: block; font-size: 12.5px; font-weight: 500; color: var(--text-sub); margin-bottom: 5px; }
+.form-row input {
+  width: 100%; padding: 7px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--chip-border); background: var(--bg-input); color: var(--text);
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+/* select 下拉框也要适配明暗主题（否则暗色下是浏览器默认白底）；color-scheme 兜底原生弹层 */
+.form-row select {
+  width: 100%; padding: 7px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--chip-border); background: var(--bg-input); color: var(--text);
+  font-size: 13px; cursor: pointer;
+}
+.form-row select option { background: var(--bg-panel); color: var(--text); }
+.form-hint { font-size: 11.5px; color: var(--text-sub); margin-top: 3px; }
+
+/* ========== 词库选择器（weilin 分组风格） ========== */
+.lib-search {
+  width: 100%; padding: 8px 12px; border-radius: var(--radius-md);
+  border: 1px solid var(--chip-border); background: var(--bg-input); color: var(--text);
+  margin-bottom: 12px;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+.lib-cat { margin-bottom: 16px; }
+.lib-cat-name { font-size: 13px; color: var(--text); margin-bottom: 6px; font-weight: 700; letter-spacing: .03em; }
+.lib-group { margin: 4px 0 10px 12px; }
+.lib-group-name { font-size: var(--fs-sm); color: var(--text-sub); margin-bottom: 5px; font-weight: 600; letter-spacing: .02em; }
+.lib-group-count {
+  font-size: 10.5px; background: var(--chip-bg); border-radius: var(--radius-pill);
+  padding: 0 6px; color: var(--text-sub);
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+.lib-tags { display: flex; flex-wrap: wrap; gap: 7px 8px; }
+/* 标签云：hover 柔和过渡（非 .chip，不涉拖拽红线） */
+.lib-tag {
+  padding: 3px 10px; border-radius: 6px; font-size: var(--fs-base); cursor: pointer;
+  border: 1px solid var(--chip-border); background: var(--chip-bg);
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+  user-select: none; display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.3;
+}
+.lib-tag:hover { border-color: var(--accent) !important; transform: translateY(-2px); box-shadow: 0 4px 12px var(--accent-glow); }
+.lib-tag .en { margin-right: 0; font-weight: var(--fw-base); letter-spacing: .01em; }
+.lib-tag .zh { color: var(--text-sub); font-size: 10.5px; }
+/* 一级分类 tab（仿 weilin group-tab） */
+.group-tab {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
+  border-radius: 8px 8px 0 0; cursor: pointer; font-size: var(--fs-base); font-weight: 600;
+  color: var(--text-sub); border-bottom: 2px solid transparent; white-space: nowrap;
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease;
+  user-select: none; flex-shrink: 0;
+}
+.group-tab:hover { color: var(--text); background: var(--bg-hover); }
+.group-tab.active {
+  color: var(--accent); border-bottom-color: var(--accent);
+  background: linear-gradient(to top, var(--accent-glow), transparent 70%);
+}
+/* 二级分组 tab（仿 weilin sub-group-tab） */
+.sub-group-tab {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px;
+  border-radius: 6px; cursor: pointer; font-size: var(--fs-base);
+  color: var(--text-sub); border: 1px solid transparent; white-space: nowrap;
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+  user-select: none; flex-shrink: 0;
+}
+.sub-group-tab:hover { color: var(--text); border-color: var(--chip-border); background: var(--bg-hover); }
+.sub-group-tab.active { color: var(--accent); border-color: var(--accent); background: var(--chip-bg); box-shadow: 0 1px 6px var(--accent-glow); }
+.lib-cat-count {
+  font-size: 10.5px; background: rgba(128, 128, 128, .18); border-radius: var(--radius-pill);
+  padding: 0 6px; color: inherit; opacity: .8;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+#libPending { display: none; background: var(--ok-bg); border-radius: var(--radius-md); padding: 8px 12px; margin-top: 10px; font-size: 12.5px; }
+#libPending.show { display: block; }
+#libPending .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+/* LLM 用户提示词输入框（编辑条顶栏，单行） */
+.llm-prompt-input {
+  width: 260px; padding: 6px 10px; border-radius: var(--radius-md); font-size: 12.5px;
+  border: 1px solid var(--chip-border); background: var(--bg-input); color: var(--text);
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+.llm-prompt-input::placeholder { color: var(--text-sub); font-size: 12px; }
+
+/* 浏览目录弹窗：目录项 hover */
+.dir-item { padding: 5px 8px; cursor: pointer; border-radius: var(--radius-sm); transition: background-color .13s ease; }
+.dir-item:hover { background: var(--bg-hover); }
+
+/* 初筛结果列表 */
+.v-item {
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+  border-radius: var(--radius-sm); margin-bottom: 4px; font-size: 13px;
+  border-left: 3px solid transparent;
+}
+.v-item.keep { background: var(--ok-bg); border-left-color: var(--ok); }
+.v-item.delete { background: var(--danger-bg); border-left-color: var(--danger); }
+.v-item .tag-en { font-weight: var(--fw-base); }
+.v-item .tag-zh { color: var(--text-sub); font-size: 12px; }
+.v-item .reason { margin-left: auto; color: var(--text-sub); font-size: 12px; }
+.v-badge { font-size: 11px; padding: 1px 7px; border-radius: var(--radius-pill); font-weight: 600; }
+.v-badge.keep { background: var(--ok); color: #fff; }
+.v-badge.delete { background: var(--danger); color: #fff; }
+
+/* 滚动条美化（暗色下也清晰可见） */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--chip-border); border-radius: var(--radius-pill);
+  border: 2px solid transparent; background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); background-clip: padding-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* 面板/弹窗展开动画 */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modalPop {
+  from { opacity: 0; transform: translateY(16px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 900px) {
+  #sidebar { width: 220px; min-width: 200px; }
+}
+
+</style>
+</head>
+<body>
+
+<!-- 氛围光层：fixed 位于所有面板之下，光晕透过半透明面板显现（pointer-events:none 不挡操作） -->
+<div id="ambient" aria-hidden="true"></div>
+<!-- 鼠标跟随光晕（背景互动）：JS 平滑移动，柔和金色光斑 -->
+<div id="mouseGlow" aria-hidden="true"></div>
+
+<!-- ========== 顶栏 ========== -->
+<header>
+  <h1><span class="brand">LoRA 打标管理器</span><small>Lora Tag Manager</small></h1>
+  <input id="folderInput" class="folder-input" placeholder="输入数据集文件夹路径，如 H:\dataset\my_lora（自动扫描）" />
+  <button class="btn" onclick="browseFolder()">浏览</button>
+  <button class="btn" onclick="openSettings()">设置</button>
+  <button class="btn" id="themeToggle" onclick="toggleTheme()" title="切换明暗主题">🌙</button>
+</header>
+
+<!-- ========== 主体 ========== -->
+<div id="layout">
+  <aside id="sidebar">
+    <div class="side-section" id="commonWrap" style="display:none;">
+      <div class="side-title">
+        <span class="dot">共同标签（所有图都有 → 建议删除）</span>
+        <button class="btn danger" style="padding:2px 10px;font-size:11px;" onclick="deleteCommon()">一键删除</button>
+      </div>
+      <div id="commonTags"></div>
+    </div>
+    <div class="side-section">
+      <div class="side-title"><span>标签搜索</span></div>
+      <input id="tagSearch" placeholder="搜索标签..." oninput="renderAllTags()" />
+    </div>
+    <div id="allTags"></div>
+  </aside>
+  <!-- 垂直分割条：拖动调整左侧标签面板宽度 -->
+  <div id="vSplitter" title="拖动调整标签面板宽度"></div>
+
+  <main id="main">
+    <div id="grid"></div>
+    <div class="empty-hint" id="emptyHint">
+      <div class="big"></div>
+      输入或浏览选择数据集文件夹，<br>自动扫描图片与打标、筛选标签、翻译、初筛
+    </div>
+  </main>
+</div>
+
+<!-- 水平分割条：拖动调整底部编辑条高度 -->
+<div id="hSplitter" title="拖动调整编辑条高度"></div>
+
+<!-- ========== 底部编辑条 ========== -->
+<div id="editor">
+  <div id="editorTop">
+    <span id="editorTitle">未选择图片</span>
+    <button class="btn" onclick="translateVisible()" oncontextmenu="showTranslateMenu(event)" title="单击：翻译当前显示的标签；右键：更多翻译选项">翻译</button>
+    <button class="btn" onclick="screenSelected()" title="批量判定当前显示的标签（单图=该图全部，多图=并集；已筛过的自动跳过）">初筛</button>
+    <button class="btn" id="undoBtn" onclick="undo()" title="撤销 (Ctrl+Z)" disabled>撤销</button>
+    <button class="btn" id="redoBtn" onclick="redo()" title="重做 (Ctrl+Y)" disabled>重做</button>
+    <button class="btn" onclick="restoreAllDiscarded()" title="将当前选中图片（单图或本批）初筛丢弃的标签全部放回原图">重置初筛</button>
+    <input id="llmUserPrompt" class="llm-prompt-input" placeholder="LLM 用户提示词（仅初筛时附加给模型）" title="仅初筛时附加给模型的用户提示词，直接回车生效" />
+    <span class="spacer"></span>
+    <button class="btn" onclick="selectAll()" title="全选当前筛选的图片">全选</button>
+    <button class="btn danger" onclick="clearSelection()">清空选择</button>
+    <button class="btn primary" onclick="saveSelected()" title="保存当前选中图片的标签到 txt">保存并覆写</button>
+    <button class="btn primary" onclick="saveAll()" title="一键保存全部图片的标签到 txt（8 并发，自动备份）">全部保存</button>
+  </div>
+  <div id="editorTags"></div>
+  <div style="margin-top:6px;display:flex;gap:8px;align-items:center;">
+    <input id="addTagInput" placeholder="输入标签，回车添加" onkeydown="if(event.key==='Enter')addTagManual()" />
+    <button class="btn" onclick="addTagManual()">添加</button>
+    <button class="btn" onclick="toggleLibPanel()" id="libToggleBtn">词库</button>
+  </div>
+  <!-- 词库面板：一级分类 tab → 二级分组 tab → 标签（仿 weilin 节点） -->
+  <div id="libPanel" style="display:none;margin-top:8px;border:1px solid var(--chip-border);border-radius:10px;overflow:hidden;">
+    <div id="libCats" class="group-tabs" style="display:flex;gap:2px;padding:6px 10px;border-bottom:1px solid var(--chip-border);overflow-x:auto;"></div>
+    <div id="libSubCats" class="sub-group-tabs" style="display:flex;gap:2px;padding:5px 10px;border-bottom:1px solid var(--chip-border);overflow-x:auto;"></div>
+    <div id="libSearchRow" style="padding:8px 10px 0;">
+      <input class="lib-search" id="libSearch" placeholder="搜索标签（英文/中文）..." oninput="libSearch()" style="margin-bottom:6px;" />
+    </div>
+    <div id="libList" style="display:flex;flex-wrap:wrap;gap:4px 5px;max-height:200px;overflow-y:auto;padding:6px 10px 10px;"></div>
+  </div>
+  <div id="screenBox"></div>
+</div>
+
+<!-- ========== 状态栏 ========== -->
+<footer id="statusBar">
+  <span>图片：<b id="stImg">-</b></span>
+  <span>有打标：<b id="stTxt">-</b></span>
+  <span>标签种类：<b id="stTag">-</b></span>
+  <span>共同标签：<b id="stCommon">-</b></span>
+  <span>翻译命中：<b id="stZh">-</b></span>
+  <span id="stMsg" style="margin-left:auto;"></span>
+</footer>
+
+<!-- ========== 弹窗容器 ========== -->
+<div id="modalRoot" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalBox"></div>
+</div>
+
+<script src="/vendor/Sortable.min.js"></script>
+<script>
+/* ================================================================
+ * LoRA 打标管理器 前端逻辑
+ * ================================================================ */
+
+// ---------- 全局状态 ----------
+const state = {
+  folder: "",
+  images: [],          // 扫描结果全量
+  filtered: [],        // 当前筛选后的图片
+  tagStats: [],        // [{tag,count,freq}]
+  commonTags: [],
+  activeTag: null,     // 当前筛选的标签
+  selected: new Set(), // 选中图片路径
+  selBeforeAll: null,  // 全选前的选择状态（取消全选时恢复）
+  zhMap: {},           // en -> zh 翻译映射
+  styleMap: {},        // en -> {group,cat,color,matched}
+  llmPrompts: [],      // 自定义 LLM 系统提示词 [{title, content}]（设置弹窗管理）
+  llmPromptActive: -1, // 当前选中提示词索引（-1=内置默认）
+  screenMap: {},       // image path -> {verdicts, tags}
+  discardMap: {},      // image path -> [被丢弃的标签]（初筛建议删除的移到这里，点击可放回）
+  libPending: [],      // 词库点选待添加的标签
+  undoStack: [],       // 撤销栈：[{type:'mem', images:[{path,tags}]} | {type:'file', items:[{image,backup}]}]
+  redoStack: [],       // 重做栈（同 undoStack 结构）
+  previewSize: 512,    // 预览缩略图尺寸（0=原图）
+  saveConcurrency: 100, // 全部保存并发数（设置里可调，默认 100）
+  screenMode: "single", // 初筛模式（保留字段，统一批量判定）
+  libOpen: false,      // 词库面板是否展开
+  libActiveCat: "",    // 词库当前选中一级分类
+  libSubActive: "",    // 词库当前选中二级分组
+  libItems: [],        // 词库全部条目
+};
+
+// ---------- 撤销 / 重做 ----------
+function pushUndo(type, data) {
+  state.undoStack.push({type, data});
+  if (state.undoStack.length > 100) state.undoStack.shift(); // 上限 100 步
+  state.redoStack = [];
+  updateUndoButtons();
+}
+function undo() {
+  const op = state.undoStack.pop();
+  if (!op) { setMsg("无可撤销操作"); return; }
+  // 撤销前把当前状态压入重做栈
+  if (op.type === "mem") {
+    // 当前状态（含丢弃区）压入重做栈——S2 修复：mem 快照带 disc，撤销同时恢复丢弃区
+    const cur = state.images.filter(img => op.data.images.some(o => o.path === img.path))
+      .map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}));
+    state.redoStack.push({type: "mem", data: {images: cur}});
+    // 恢复内存标签 + 丢弃区（对称还原，避免标签重复/消失）
+    op.data.images.forEach(o => {
+      const img = state.images.find(i => i.path === o.path);
+      if (img) {
+        img.tags = [...o.tags];
+        state.discardMap[img.path] = [...(o.disc || [])];
+      }
+    });
+    rescanStats();
+    renderGrid();
+    renderEditor();
+    setMsg(`已撤销 ${op.data.images.length} 张图片的标签修改（未保存）`);
+  } else if (op.type === "file") {
+    state.redoStack.push({type: "file", data: op.data});
+    api("/api/restore", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({items: op.data.items}) }).then(r => {
+      if (!r.ok) { setMsg("恢复失败"); return; }
+      // 只更新改动的 txt 对应图片的标签（不刷新整个图片网格）
+      (r.results || []).forEach(res => {
+        if (!res.ok) return;
+        const img = state.images.find(i => i.path === res.image);
+        if (img) img.tags = res.tags || [];
+      });
+      rescanStats();
+      renderGrid();
+      renderEditor();
+      setMsg(`已从备份恢复 ${r.results.length} 个 txt`);
+    });
+  } else if (op.type === "discard") {
+    // 撤销"彻底移除"：把标签放回丢弃区
+    state.redoStack.push({type: "discard", data: {path: op.data.path, tag: op.data.tag}});
+    const arr = state.discardMap[op.data.path] || [];
+    if (!arr.includes(op.data.tag)) state.discardMap[op.data.path] = [...arr, op.data.tag];
+    renderEditor();
+    setMsg(`已恢复丢弃区标签: ${op.data.tag}`);
+  }
+  updateUndoButtons();
+}
+function redo() {
+  const op = state.redoStack.pop();
+  if (!op) { setMsg("无可重做操作"); return; }
+  if (op.type === "mem") {
+    const cur = state.images.filter(img => op.data.images.some(o => o.path === img.path))
+      .map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}));
+    state.undoStack.push({type: "mem", data: {images: cur}});
+    op.data.images.forEach(o => {
+      const img = state.images.find(i => i.path === o.path);
+      if (img) {
+        img.tags = [...o.tags];
+        state.discardMap[img.path] = [...(o.disc || [])];
+      }
+    });
+    rescanStats();
+    renderGrid();
+    renderEditor();
+    setMsg(`已重做 ${op.data.images.length} 张图片的标签修改（未保存）`);
+  } else if (op.type === "file") {
+    state.undoStack.push({type: "file", data: op.data});
+    api("/api/restore", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({items: op.data.items}) }).then(r => {
+      if (!r.ok) { setMsg("重做失败"); return; }
+      // 只更新改动的 txt 对应图片的标签（不刷新整个图片网格）
+      (r.results || []).forEach(res => {
+        if (!res.ok) return;
+        const img = state.images.find(i => i.path === res.image);
+        if (img) img.tags = res.tags || [];
+      });
+      rescanStats();
+      renderGrid();
+      renderEditor();
+      setMsg(`已重新应用 ${r.results.length} 个 txt`);
+    });
+  } else if (op.type === "discard") {
+    // 重做"彻底移除"：再次从丢弃区移除
+    state.undoStack.push({type: "discard", data: {path: op.data.path, tag: op.data.tag}});
+    const arr = state.discardMap[op.data.path] || [];
+    if (arr.includes(op.data.tag)) state.discardMap[op.data.path] = arr.filter(t => t !== op.data.tag);
+    renderEditor();
+    setMsg(`已再次移除丢弃区标签: ${op.data.tag}`);
+  }
+  updateUndoButtons();
+}
+function updateUndoButtons() {
+  const u = document.getElementById("undoBtn");
+  const r = document.getElementById("redoBtn");
+  if (u) u.disabled = !state.undoStack.length;
+  if (r) r.disabled = !state.redoStack.length;
+}
+
+// ---------- 工具 ----------
+function api(path, opts) {
+  return fetch(path, opts).then(r => r.json().catch(() => ({error: "响应解析失败"})));
+}
+function enc(p) { return encodeURIComponent(p); }
+// 缩略图 URL：previewSize=0 时用原图（设置里可关闭），否则走 /api/thumb 缓存
+function thumbURL(path) {
+  if (!state.previewSize) return "/api/image?path=" + enc(path);
+  return "/api/thumb?path=" + enc(path) + "&size=" + state.previewSize;
+}
+function zhOf(en) { return state.zhMap[en] || ""; }
+function styleOf(en) { return state.styleMap[en] || {color:"",matched:false}; }
+function chipHTML(en, extra, showDel) {
+  var zh = zhOf(en);
+  var st = styleOf(en);
+  var dark = document.documentElement.dataset.theme === "dark";
+  // 黑金主题适配：分组色只保留 45% 背景，平时无边框（透气），hover 时 CSS 显示金色边框。
+  // 无 color 的标签（词典/自定义）给默认柔和金底，保证所有标签都有颜色
+  var style = (st.matched && st.color)
+    ? "background:color-mix(in srgb, " + st.color + " var(--chip-tint, 45%), var(--chip-bg));border-color:transparent;"
+    : "background:color-mix(in srgb, rgba(201, 179, 126, .35) 32%, var(--chip-bg));border-color:transparent;";
+  var esc = en.replace(/"/g, "&quot;");
+  var html = '<span class="chip" data-tag="' + esc + '" ' + (extra || '') + ' style="' + style + '">'
+    + '<span class="en-line">' + escHtml(en) + '</span>';
+  if (zh && zh !== en) html += '<span class="zh-line">' + escHtml(zh) + '</span>';
+  if (showDel) html += '<span class="del" title="移除标签">✕</span>';
+  html += '</span>';
+  return html;
+}
+
+// HTML 转义：所有动态文本插入前调用（S3：防存储型 XSS——标签/文件名可含 < > & 等）
+function escHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// ---------- 主题 ----------
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  document.getElementById("themeToggle").textContent = t === "dark" ? "🌙" : "☀️";
+  localStorage.setItem("loraTagTheme", t);
+}
+function toggleTheme() {
+  const cur = document.documentElement.dataset.theme;
+  applyTheme(cur === "dark" ? "light" : "dark");
+  renderGrid(); // 刷新卡片颜色
+}
+
+// ---------- 扫描 ----------
+function browseFolder() {
+  // 弹出目录选择弹窗（盘符→子目录逐级，支持切换盘符/返回上级）
+  api("/api/drives").then(r => {
+    const html = `<div class="modal-head"><h3>选择文件夹</h3><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="form-row"><label>当前路径</label><input id="browsePath" value="${state.folder||"C:\\"}" /></div>
+        <div style="margin-bottom:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <b>盘符：</b><span id="driveBar">${r.drives.map(d=>`<button class="btn drive-btn" data-drive="${d.replace(/"/g,'&quot;')}" style="margin:2px;">${d}</button>`).join("")}</span>
+          <button class="btn" id="browseUp" style="margin-left:auto;">上一级</button>
+        </div>
+        <div id="browseList" style="max-height:300px;overflow-y:auto;border:1px solid var(--chip-border);border-radius:8px;padding:6px;"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" onclick="browseGo()">使用此路径</button>
+      </div>`;
+    openModal(html);
+    // 事件委托（data 属性传路径，避免内联 onclick 的 \t/引号转义坑）
+    document.getElementById("driveBar").addEventListener("click", e => {
+      const b = e.target.closest(".drive-btn");
+      if (b) browseInto(b.dataset.drive);
+    });
+    document.getElementById("browseList").addEventListener("click", e => {
+      const el = e.target.closest(".dir-item");
+      if (el) browseInto(el.dataset.dir);
+    });
+    document.getElementById("browseUp").addEventListener("click", () => {
+      const p = document.getElementById("browsePath").value;
+      const up = parentDir(p);
+      if (up) browseInto(up);
+    });
+    document.getElementById("browsePath").addEventListener("keydown", e => {
+      if (e.key === "Enter") browseInto(document.getElementById("browsePath").value.trim());
+    });
+    browseInto(state.folder || "C:\\");
+  });
+}
+// 上级目录：C:\a\b -> C:\a；C:\a -> C:\；C:\ -> null（已是根）
+function parentDir(p) {
+  if (!p) return null;
+  const norm = p.replace(/\/+$/, "").replace(/\\+$/, "");
+  const m = norm.match(/^([A-Za-z]):(.*)$/);
+  if (!m) return null;
+  const [, drive, rest] = m;
+  if (!rest) return null;              // 盘符根 C: 无上级
+  const idx = rest.lastIndexOf("\\");
+  if (idx <= 0) return drive + ":\\";  // C:\foo -> C:\
+  return drive + ":" + rest.slice(0, idx);
+}
+function browseInto(p) {
+  if (!p) return;
+  document.getElementById("browsePath").value = p;
+  api("/api/listdir?path=" + enc(p)).then(r => {
+    if (r.error) { document.getElementById("browseList").innerHTML = `<div style="color:var(--danger);padding:8px;">${r.error}</div>`; return; }
+    const html = r.dirs.slice(0, 500).map(d => {
+      const full = (p.endsWith("\\") ? p : p + "\\") + d;
+      return `<div class="dir-item" data-dir="${full.replace(/"/g,'&quot;')}" style="padding:5px 8px;cursor:pointer;border-radius:5px;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'">${d}</div>`;
+    }).join("");
+    document.getElementById("browseList").innerHTML = html || `<div style="padding:8px;color:var(--text-sub);">（无子目录）</div>`;
+  });
+}
+function browseGo() {
+  const p = document.getElementById("browsePath").value.trim();
+  if (p) { document.getElementById("folderInput").value = p; closeModal(); scanFolder(); }
+}
+
+let _scanPollTimer = null;   // 轮询定时器（1s 一次）
+let _scanLastPath = "";      // 上次检查的路径
+let _scanStableCount = 0;    // 路径连续未变化秒数
+// 输入过程不实时扫描：每 1s 检查一次路径，连续 5s 无变化才扫描一次并停止轮询
+function autoScanInput() {
+  clearInterval(_scanPollTimer);
+  _scanPollTimer = null;
+  _scanLastPath = document.getElementById("folderInput").value.trim();
+  _scanStableCount = 0;
+  _scanPollTimer = setInterval(() => {
+    const folder = document.getElementById("folderInput").value.trim();
+    if (folder === _scanLastPath) {
+      _scanStableCount++;
+      if (_scanStableCount >= 5) {   // 路径 5s 内不再变化 → 扫描并停止
+        clearInterval(_scanPollTimer);
+        _scanPollTimer = null;
+        if (!folder) { setMsg("请输入数据集文件夹路径"); return; }
+        if (folder !== state.folder) scanFolder();
+      }
+    } else {
+      _scanLastPath = folder;        // 路径仍在变化，重置稳定计时
+      _scanStableCount = 0;
+    }
+  }, 1000);
+}
+// 输入完成（失焦）立即扫描，不用等轮询
+function autoScanBlur() {
+  clearInterval(_scanPollTimer);
+  _scanPollTimer = null;
+  const folder = document.getElementById("folderInput").value.trim();
+  if (!folder) { setMsg("请输入数据集文件夹路径"); return; }
+  if (folder !== state.folder) scanFolder();
+}
+
+function scanFolder() {
+  const folder = document.getElementById("folderInput").value.trim();
+  if (!folder) { setMsg("请先输入文件夹路径"); return; }
+  // 记录路径（刷新后恢复）：scanFolder 是所有路径提交的统一入口，先记录不依赖扫描结果
+  api("/api/recent", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({folder: folder}) });
+  state.folder = folder;
+  setMsg("扫描中...");
+  api("/api/scan", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({folder}) }).then(r => {
+    if (r.error) { setMsg("" + r.error); return; }
+    state.images = r.images;
+    state.tagStats = r.tag_stats;
+    state.commonTags = r.common_tags;
+    state.activeTag = null;
+    state.selected = new Set();
+    state.selBeforeAll = null;
+    state.screenMap = {};
+    state.discardMap = {};
+    state.libPending = [];
+    document.getElementById("stImg").textContent = r.total_images;
+    document.getElementById("stTxt").textContent = r.total_txt;
+    document.getElementById("stTag").textContent = r.total_tags;
+    document.getElementById("stCommon").textContent = r.common_tags.length;
+    document.getElementById("commonWrap").style.display = r.common_tags.length ? "block" : "none";
+    // 一次性拉取所有标签的翻译+风格
+    fetchAllTranslations();
+    renderCommonTags();
+    renderAllTags();
+    applyFilter();
+    setMsg(`扫描完成：${r.total_images} 张图片，${r.total_tags} 种标签`);
+  });
+}
+
+// 分批获取翻译（每批 300 个）
+function fetchAllTranslations() {
+  const all = state.tagStats.map(t => t.tag);
+  const batch = 300;
+  const run = (i) => {
+    const chunk = all.slice(i, i + batch);
+    if (!chunk.length) { updateZhStats(); return; }
+    api("/api/translate/dict?tags=" + enc(chunk.join(","))).then(r => {
+      if (r.ok) {
+        for (const it of r.items) {
+          if (it.zh) state.zhMap[it.en] = it.zh;
+          state.styleMap[it.en] = {group: it.group, cat: it.cat, color: it.color, matched: it.matched};
+        }
+      }
+      renderAllTags();
+      run(i + batch);
+    }).catch(() => { renderAllTags(); updateZhStats(); });  // B6：网络异常不中断链，统计兜底更新
+  };
+  run(0);
+  // 回填全部本地翻译缓存（含非数据集标签：输入框新增/历史翻译），刷新后不丢失
+  api("/api/translate/cache").then(r => {
+    if (r.ok && r.cache) Object.assign(state.zhMap, r.cache);
+    renderAllTags();
+  });
+}
+function updateZhStats() {
+  document.getElementById("stZh").textContent = Object.keys(state.zhMap).length;
+}
+
+// ---------- 标签面板 ----------
+function renderCommonTags() {
+  const el = document.getElementById("commonTags");
+  if (!state.commonTags.length) { el.innerHTML = ""; return; }
+  el.innerHTML = state.commonTags.map(t => chipHTML(t)).join("");
+}
+
+function renderAllTags() {
+  const q = document.getElementById("tagSearch").value.trim().toLowerCase();
+  const list = state.tagStats.filter(t => !q || t.tag.toLowerCase().includes(q));
+  const el = document.getElementById("allTags");
+  el.innerHTML = list.slice(0, 2000).map(t => {
+    const zh = zhOf(t.tag);
+    const active = state.activeTag === t.tag ? "active" : "";
+    return `<div class="tag-row ${active}" data-tag="${t.tag.replace(/"/g,'&quot;')}">
+      <span class="tag-text"><span class="tag-en">${escHtml(t.tag)}</span>${zh && zh !== t.tag ? `<span class="tag-zh">${escHtml(zh)}</span>` : ""}</span>
+      <span class="tag-count">${t.count}</span>
+    </div>`;
+  }).join("") || `<div style="padding:10px;color:var(--text-sub);">无匹配标签</div>`;
+}
+
+// ---------- 筛选与网格 ----------
+function setFilter(tag) {
+  state.activeTag = state.activeTag === tag ? null : tag;
+  renderAllTags();
+  applyFilter();
+}
+function applyFilter() {
+  if (!state.images.length) return;
+  state.filtered = state.activeTag
+    ? state.images.filter(img => img.tags.includes(state.activeTag))
+    : state.images;
+  renderGrid();
+}
+function renderGrid() {
+  const grid = document.getElementById("grid");
+  document.getElementById("emptyHint").style.display = state.images.length ? "none" : "block";
+  if (!state.filtered.length) {
+    grid.innerHTML = `<div class="empty-hint">无匹配图片${state.activeTag ? `（标签: ${state.activeTag}）` : ""}</div>`;
+    return;
+  }
+  grid.innerHTML = state.filtered.map(img => {
+    const sel = state.selected.has(img.path) ? "selected" : "";
+    const disc = (state.discardMap[img.path] || []).length;
+    const screened = !!state.screenMap[img.path];
+    return `<div class="card ${sel}" data-path="${img.path.replace(/"/g,'&quot;')}">
+      <img src="${thumbURL(img.path)}" loading="lazy" />
+      ${disc ? `<div class="screen-dot" title="丢弃区有 ${disc} 个标签，点击底部丢弃区可放回">${disc}</div>` : screened ? `<div class="screen-dot done" title="已初筛（无待处理）">✓</div>` : ""}
+      <div class="meta">
+        <span class="name" title="${escHtml(img.name)}">${escHtml(img.name)}</span>
+        <span class="badge ${img.has_txt ? "" : "no-txt"}">${img.has_txt ? img.count + " 标签" : "无txt"}</span>
+      </div>
+    </div>`;
+  }).join("");
+  renderEditor();
+}
+
+// 图片选择：默认单击=单选；按住 Ctrl 单击=多选 toggle（仿常见文件管理器交互）
+function toggleSelect(path, ctrlKey) {
+  if (ctrlKey) {
+    // Ctrl+单击：多选 toggle（已选则取消，未选则加入）
+    if (state.selected.has(path)) state.selected.delete(path);
+    else state.selected.add(path);
+  } else {
+    // 普通单击：单选（清空其他，只选当前）
+    state.selected.clear();
+    state.selected.add(path);
+  }
+  renderGrid();
+}
+function clearSelection() { state.selected.clear(); state.selBeforeAll = null; state.libPending = []; renderGrid(); }
+// 全选当前筛选结果（再次点击则取消全选）
+function selectAll() {
+  const all = state.filtered.length ? state.filtered : state.images;
+  if (!all.length) return;
+  const alreadyAll = all.every(img => state.selected.has(img.path));
+  if (alreadyAll) {
+    // 取消全选：恢复全选之前的选择状态（上次单选/多选），而非清空
+    state.selected = new Set(state.selBeforeAll || []);
+    state.selBeforeAll = null;
+    setMsg(`已取消全选（${state.selected.size} 张）`);
+    renderGrid();
+    return;
+  }
+  state.selBeforeAll = [...state.selected]; // 记住全选前的选择
+  state.selected = new Set(all.map(img => img.path));
+  setMsg(`已全选 ${all.length} 张图片`);
+  renderGrid();
+}
+
+// ---------- 底部编辑条 ----------
+function renderEditor() {
+  const box = document.getElementById("editor");
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) {
+    box.classList.remove("show");
+    document.getElementById("screenBox").classList.remove("show");
+    return;
+  }
+  // 记录编辑条是否"刚显示"（从隐藏 → 显示）：仅此时 chips 播放弹入动效
+  const wasHidden = !box.classList.contains("show");
+  box.classList.add("show");
+  // 标签滚动动效触发条件：编辑条首次显示 或 所选图片切换（点图/切图时滚动）；
+  // 删除/添加/编辑标签等重建不滚动（保持"删除时不滚动"诉求）
+  const selKey = sel.map(i => i.path).join("|");
+  const imgChanged = wasHidden || selKey !== state._editorSelKey;
+  state._editorSelKey = selKey;
+  const single = sel.length === 1;
+  document.getElementById("editorTitle").innerHTML = single
+    ? `${escHtml(sel[0].name)}<span class="sub">${escHtml(sel[0].path)}</span>`
+    : `已选 ${sel.length} 张图片<span class="sub">（批量操作：下方标签改动将应用到全部所选）</span>`;
+
+  // 标签 chips：单图显示该图全部标签；多图显示所选图片的标签并集
+  let tagSet = [];
+  if (single) tagSet = sel[0].tags;
+  else {
+    const union = new Set();
+    sel.forEach(img => img.tags.forEach(t => union.add(t)));
+    tagSet = [...union];
+  }
+  const tagEl = document.getElementById("editorTags");
+  tagEl.innerHTML = tagSet.length
+    ? tagSet.map(t => chipHTML(t, 'title="拖动排序，点 ✕ 移除"', true)).join("")
+    : `<span style="color:var(--text-sub);font-size:12.5px;">${single ? "该图无标签" : "所选图片无标签"}</span>`;
+  // 标签 chips 依次弹入动效：编辑条首次显示 / 切换图片时播放；
+  // 先等编辑条弹出（基础延迟 150ms），再按 45ms/个 舒缓滚动；删除/添加等重建不重播
+  if (imgChanged) {
+    tagEl.querySelectorAll(".chip").forEach((c, i) => {
+      c.classList.add("chip-in");
+      c.style.animationDelay = Math.min(150 + i * 45, 600) + "ms";
+    });
+  }
+  // 注意：不设置 chip 的 style.order！SortableJS 用 DOM 顺序计算索引，
+  // 而 CSS order 改变视觉顺序会导致索引错位、拖拽失效（旧方案的遗留坑）
+  // chips 已重建，重新绑定 Sortable 拖拽（仿 weilin 节点）
+  if (window.__initSortable) window.__initSortable();
+
+  // 丢弃区：每张图片独立一块（初筛建议删除的标签在这里，点击即可放回原标签）
+  const sbox = document.getElementById("screenBox");
+  let html = "";
+  sel.forEach(img => {
+    const discarded = state.discardMap[img.path] || [];
+    if (!discarded.length) return;
+    html += `<div style="margin-bottom:6px;"><b style="font-size:12.5px;">${escHtml(img.name)}</b> — 已丢弃 ${discarded.length} 个标签（点击放回原标签）：
+      <span style="display:flex;flex-wrap:wrap;gap:4px 5px;margin-top:4px;">
+      ${discarded.map(t => chipHTML(t, `data-img="${img.path.replace(/"/g,'&quot;')}" title="点击放回原标签，✕ 彻底移除"`, true)).join("")}
+      </span>
+    </div>`;
+  });
+  if (html) {
+    sbox.innerHTML = `<div class="st-title">丢弃区（初筛建议删除/手动移除的标签，点击即可放回）</div>` + html;
+    sbox.classList.add("show");
+  } else {
+    sbox.classList.remove("show");
+  }
+}
+
+// 词库优先匹配：英文忽略下划线差异（long hair ↔ long_hair）；中文匹配词库翻译
+function matchLibTag(raw) {
+  const items = state.libItems || [];
+  const q = raw.trim().toLowerCase();
+  // 英文/混合：归一化（去下划线、小写）比较
+  const norm = q.replace(/_/g, " ");
+  let hit = items.find(t => (t.en || "").toLowerCase().replace(/_/g, " ") === norm);
+  if (hit) return hit;
+  // 中文：匹配 zh 翻译（忽略空格）
+  const qn = q.replace(/\s+/g, "");
+  hit = items.find(t => (t.zh || "").replace(/\s+/g, "") === qn);
+  return hit || null;
+}
+
+// 统一添加标签到选中图片（附带中文翻译到 zhMap，chip 立即显示）
+function addTagToSel(en, zh) {
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) return;
+  pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+  let added = 0;
+  sel.forEach(img => { if (!img.tags.includes(en)) { img.tags.push(en); added++; } });
+  if (zh) state.zhMap[en] = zh;
+  rescanStats();
+  renderGrid();
+  setMsg(added ? `已添加标签: ${en}${zh ? "（" + zh + "）" : ""}` : `标签已存在: ${en}`);
+}
+
+function addTagManual() {
+  const inp = document.getElementById("addTagInput");
+  const raw = inp.value.trim();
+  if (!raw) return;
+  inp.value = "";
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) { setMsg("请先选择图片，再添加标签"); return; }
+
+  // 1. 词库优先匹配（英文忽略下划线 / 中文匹配翻译）
+  const hit = matchLibTag(raw);
+  if (hit) {
+    addTagToSel(hit.en, hit.zh || "");
+    return;
+  }
+  // 2. 中文未命中词库 → 自动翻译成英文标签
+  if (/[\u4e00-\u9fff]/.test(raw)) {
+    setMsg(`正在转换中文标签: ${raw}...`);
+    api("/api/translate/llm", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tags: [raw], to_en: true}) }).then(r => {
+      const en = r.translated && r.translated[raw];
+      if (!en || en === raw) { setMsg("翻译失败，无法转换该中文标签"); return; }
+      // 规范化：小写 + 空格换下划线
+      const enNorm = en.trim().replace(/\s+/g, "_").toLowerCase();
+      addTagToSel(enNorm, raw);
+    }).catch(() => setMsg("翻译失败，请检查 DeepSeek API Key"));
+    return;
+  }
+  // 3. 英文：规范化（空格→下划线）后添加，自动附中文翻译（词典优先 → LLM 兜底）
+  const enNorm = raw.replace(/\s+/g, "_").toLowerCase();
+  addTagToSel(enNorm, "");
+  autoTranslateTag(enNorm);
+}
+
+// 手动 ✕ 删除：从原标签移除并移入该图丢弃区（与初筛自动丢弃一致，点击丢弃区可放回）
+function removeTagFromSelection(tag) {
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) return;
+  pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+  sel.forEach(img => {
+    if (img.tags.includes(tag)) {
+      img.tags = img.tags.filter(t => t !== tag);
+      state.discardMap[img.path] = [...(state.discardMap[img.path] || []), tag];
+    }
+  });
+  rescanStats();  // G2：✕ 删除后刷新侧栏统计
+  renderGrid();
+  setMsg(`已移除标签 ${tag}（丢弃区可放回）`);
+}
+
+// 丢弃区放回：把标签从该图的丢弃区放回原标签列表（未保存，可撤销）
+function restoreDiscarded(imgPath, tag) {
+  const img = state.images.find(i => i.path === imgPath);
+  if (!img) return;
+  const disc = state.discardMap[imgPath] || [];
+  if (!disc.includes(tag)) return;
+  pushUndo("mem", {images: [{path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}]});
+  state.discardMap[imgPath] = disc.filter(t => t !== tag);
+  if (!img.tags.includes(tag)) img.tags.push(tag);
+  rescanStats();  // G2：放回后刷新侧栏统计
+  setMsg(`已放回标签: ${tag}（${img.name}）`);
+  renderGrid();
+}
+
+// 丢弃区 ✕：彻底移除该标签（从丢弃区删除，不再放回原图）
+function removeFromDiscard(imgPath, tag) {
+  const disc = state.discardMap[imgPath] || [];
+  if (!disc.includes(tag)) return;
+  pushUndo("discard", {path: imgPath, tag});
+  state.discardMap[imgPath] = disc.filter(t => t !== tag);
+  setMsg(`已彻底移除标签: ${tag}`);
+  renderEditor();
+}
+
+// 单击标签 → 编辑模式（chip 变输入框）；提交后自动翻译新标签
+function startEditTag(chip) {
+  const oldTag = chip.dataset.tag;
+  if (!oldTag) return;
+  const inp = document.createElement("input");
+  inp.className = "chip-edit-input";
+  inp.value = oldTag;
+  inp.setAttribute("data-old", oldTag);
+  inp.title = "修改标签，回车确认，Esc 取消";
+  chip.innerHTML = "";
+  chip.appendChild(inp);
+  // 编辑中禁止触发拖拽/点击事件
+  inp.addEventListener("mousedown", e => e.stopPropagation());
+  inp.addEventListener("click", e => e.stopPropagation());
+  inp.focus();
+  inp.select();
+  let done = false;  // 防双重提交：Enter/Esc 后 blur 不再提交（blur 由 renderEditor 重建触发）
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    if (commit) {
+      const newTag = inp.value.trim();
+      if (newTag && newTag !== oldTag) commitEditTag(oldTag, newTag);
+    }
+    renderEditor(); // 恢复 chip 显示（无论提交/取消）
+  };
+  inp.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") { finish(true); }
+    else if (e.key === "Escape") { finish(false); }
+  });
+  inp.addEventListener("blur", () => finish(true));
+}
+
+// 提交标签修改：替换所有选中图片中的旧标签 → 新标签（丢弃区同步替换），并自动翻译
+function commitEditTag(oldTag, newTag) {
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) return;
+  pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+  sel.forEach(img => {
+    if (!img.tags.includes(oldTag)) return;
+    img.tags = img.tags.map(t => t === oldTag ? newTag : t);
+    // 丢弃区同步替换（如果旧标签在丢弃区，改成新标签，保持可放回）
+    const disc = state.discardMap[img.path] || [];
+    if (disc.includes(oldTag)) {
+      state.discardMap[img.path] = disc.map(t => t === oldTag ? newTag : t);
+    }
+  });
+  setMsg(`标签已修改: ${oldTag} → ${newTag}（未保存）`);
+  renderGrid();
+  // 自动翻译新标签（词典优先，未命中走 LLM）
+  autoTranslateTag(newTag);
+}
+
+// 自动翻译单个标签：离线词典 → 未命中 → LLM（DeepSeek）
+function autoTranslateTag(tag) {
+  api("/api/translate/dict?tags=" + enc(tag)).then(r => {
+    const item = (r.items || []).find(i => i.en === tag);
+    if (item && item.zh) {
+      state.zhMap[tag] = item.zh;
+      updateZhStats();
+      renderAllTags(); renderCommonTags(); renderGrid();
+      setMsg(`新标签已自动翻译: ${tag} → ${item.zh}`);
+      return;
+    }
+    // 词典未命中 → LLM 翻译
+    api("/api/translate/llm", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tags: [tag]}) }).then(r2 => {
+      const zh = r2.translated && r2.translated[tag];
+      if (zh && zh !== tag) {
+        state.zhMap[tag] = zh;
+        updateZhStats();
+        renderAllTags(); renderCommonTags(); renderGrid();
+      }
+    });
+  });
+}
+
+function saveSelected() {
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) { setMsg("未选择图片"); return; }
+  setMsg("保存中...");
+  const tasks = sel.map(img =>
+    api("/api/tags/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({image: img.path, tags: img.tags}) })
+      .then(r => { if (!r.ok) throw new Error(r.error || "保存失败"); return {path: img.path, backup: r.backup || ""}; })
+  );
+  Promise.all(tasks).then(results => {
+    // 保存后把"恢复当前txt"入撤销栈（file 型撤销：用 update 前的最新备份）
+    const items = results.filter(r => r.backup).map(r => ({image: r.path, backup: r.backup}));
+    if (items.length) pushUndo("file", {items});
+    setMsg(`已覆写保存 ${results.length} 个 txt（原文件已自动备份到 backups/）`);
+    rescanStats();
+  }).catch(e => { setMsg("" + e.message); });
+}
+
+// 一键全部保存：所有图片（含丢弃区放回/标签改动），并发写盘（并发数设置里可调，默认 100）
+function saveAll() {
+  const all = state.images;
+  if (!all.length) { setMsg("没有图片"); return; }
+  const concurrency = Math.max(1, state.saveConcurrency || 100);
+  setMsg(`正在全部保存（${concurrency} 并发）... 0/${all.length}`);
+  let done = 0, failed = 0, next = 0;
+  const backupItems = [];
+  function worker() {
+    if (next >= all.length) return;
+    const img = all[next++];
+    api("/api/tags/update", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({image: img.path, tags: img.tags}) })
+      .then(r => {
+        if (r.ok && r.backup) backupItems.push({image: img.path, backup: r.backup});
+        else if (!r.ok) failed++;
+        done++;
+        setMsg(`正在全部保存... ${done}/${all.length}`);
+        worker();
+      })
+      .catch(() => { failed++; done++; worker(); });
+  }
+  for (let i = 0; i < Math.min(concurrency, all.length); i++) worker();
+  const timer = setInterval(() => {
+    if (done >= all.length) {
+      clearInterval(timer);
+      if (backupItems.length) pushUndo("file", {items: backupItems});
+      rescanStats();
+      setMsg(failed
+        ? `全部保存完成：成功 ${done - failed}/${all.length}，失败 ${failed} 张`
+        : `已全部保存 ${all.length} 个 txt（原文件已自动备份到 backups/）`);
+    }
+  }, 400);
+}
+
+// 保存后重新统计标签频率（不重新拉图，直接本地计算）
+function rescanStats() {
+  const counter = {};
+  let txtCount = 0;
+  state.images.forEach(img => {
+    if (img.has_txt || img.tags.length) txtCount++;
+    img.tags.forEach(t => { counter[t] = (counter[t] || 0) + 1; });
+  });
+  state.tagStats = Object.entries(counter).map(([tag, count]) => ({tag, count, freq: count/state.images.length})).sort((a,b) => b.count - a.count);
+  state.commonTags = state.tagStats.filter(t => t.count === txtCount && txtCount > 0).map(t => t.tag);
+  document.getElementById("stTag").textContent = state.tagStats.length;
+  document.getElementById("stCommon").textContent = state.commonTags.length;
+  document.getElementById("commonWrap").style.display = state.commonTags.length ? "block" : "none";
+  renderCommonTags();
+  renderAllTags();
+  // 新标签的翻译补拉
+  const unknown = state.tagStats.filter(t => !state.zhMap[t.tag]).map(t => t.tag);
+  if (unknown.length) {
+    api("/api/translate/dict?tags=" + enc(unknown.slice(0,300).join(","))).then(r => {
+      if (r.ok) r.items.forEach(it => { if (it.zh) state.zhMap[it.en] = it.zh; state.styleMap[it.en] = {matched: it.matched, color: it.color, group: it.group, cat: it.cat}; });
+      updateZhStats(); renderAllTags(); renderGrid();
+    });
+  }
+}
+
+// ---------- 一键删除共同标签 ----------
+function deleteCommon() {
+  if (!state.commonTags.length) return;
+  if (!confirm(`确定删除 ${state.commonTags.length} 个共同标签（所有图片都含有的标签）？\n\n${state.commonTags.slice(0,20).join(", ")}${state.commonTags.length>20?"...":""}\n\n将覆写全部 txt，原文件自动备份。`)) return;
+  setMsg("批量删除共同标签中...");
+  const paths = state.images.map(i => i.path);
+  api("/api/tags/batch", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({images: paths, remove: state.commonTags, add: []}) }).then(r => {
+    if (!r.ok) { setMsg("" + (r.error||"失败")); return; }
+    // 记录撤销：用批量操作前的备份
+    const items = (r.results || []).filter(x => x.backup).map(x => ({image: x.image, backup: x.backup}));
+    if (items.length) pushUndo("file", {items});
+    state.images.forEach(img => { img.tags = img.tags.filter(t => !state.commonTags.includes(t)); });
+    setMsg(`已删除 ${state.commonTags.length} 个共同标签（已备份）`);
+    state.commonTags = [];
+    rescanStats();
+    renderGrid();
+  });
+}
+
+// ---------- 词库面板（一级分类 tab → 二级分组 tab → 标签，仿 weilin 节点） ----------
+function toggleLibPanel() {
+  state.libOpen = !state.libOpen;
+  const panel = document.getElementById("libPanel");
+  panel.style.display = state.libOpen ? "block" : "none";
+  const b1 = document.getElementById("libToggleBtn");
+  if (b1) b1.textContent = state.libOpen ? "词库 ▲" : "词库";
+  if (state.libOpen) {
+    if (!state.libItems.length) loadLibAll();
+    else { renderLibCats(); renderSubLibCats(); renderLibList(); }
+  }
+}
+
+// 加载全部词库条目（一次加载，分类切换本地渲染，不再反复请求）
+function loadLibAll() {
+  api("/api/taglib").then(r => {
+    state.libItems = r.items || [];
+    if (!state.libItems.length) { setMsg("词库未加载（taglib/taglib.yaml 不存在）"); return; }
+    // 关键修复：词库条目同时填充 styleMap/zhMap——否则从词库添加的标签
+    // 没有颜色（styleMap 无记录）、没有中文翻译（zhMap 无记录 → chip 缺 zh-line 行）
+    (r.items || []).forEach(it => {
+      if (it.zh) state.zhMap[it.en] = it.zh;
+      // matched：词库 API 无 matched 字段，有 color 即视为命中分组色
+      state.styleMap[it.en] = {matched: it.matched !== false && !!it.color, color: it.color, group: it.group, cat: it.cat};
+    });
+    state.libActiveCat = state.libItems[0].cat || "其他";
+    state.libSubActive = "";
+    renderLibCats();
+    renderSubLibCats();
+    renderLibList();
+  });
+}
+
+// 渲染一级分类 tab（中文分类名 + 数量，横向滚动，仿 weilin group-tab）
+function renderLibCats() {
+  const cats = [];   // [{cat, cat_zh, count}]
+  const seen = {};
+  state.libItems.forEach(t => {
+    const c = t.cat || "其他";
+    if (!seen[c]) { seen[c] = {cat: c, cat_zh: t.cat_zh || c, count: 0}; cats.push(seen[c]); }
+    seen[c].count++;
+  });
+  const el = document.getElementById("libCats");
+  if (!el) return;
+  el.innerHTML = cats.map(c => {
+    const active = c.cat === state.libActiveCat ? "active" : "";
+    return `<div class="group-tab ${active}" data-cat="${c.cat.replace(/"/g,'&quot;')}" onclick="setLibCat('${c.cat.replace(/'/g,"\\'")}')">
+      <span class="lib-cat-zh">${c.cat_zh}</span><span class="lib-cat-count">${c.count}</span>
+    </div>`;
+  }).join("");
+}
+
+// 二级分组中文翻译（weilin 分组名是英文，仿一级分类 CAT_ZH 提供中文显示）
+const GROUP_ZH = {
+  // Person 人物
+  "Abdomen":"腹部","Age":"年龄","Anime Role":"动漫角色","Chest":"胸部","Ears":"耳朵","Eyebrows":"眉毛","Eyes":"眼睛",
+  "Face":"脸部","Face shape":"脸型","Figure":"体型","Hair":"头发","Identity":"身份","Mouth":"嘴巴","Nails":"指甲",
+  "Nose":"鼻子","Object":"物品","Pupils":"瞳孔","Shoulders":"肩膀","Skin":"皮肤","Teeth":"牙齿","Tongue":"舌头",
+  "Waist":"腰部","Wings":"翅膀",
+  // Apparel 服饰
+  "Armor":"铠甲","Arms":"手臂","Boots":"靴子","Casual wear":"休闲服","Coat":"外套","Decorate":"装饰","Earrings":"耳环",
+  "Formal wear":"正装","Glasses":"眼镜","Gloves":"手套","Hair accessories":"发饰","Hand":"手部","Hat":"帽子",
+  "Headwear":"头饰","Interact with pants":"与裤子互动","Interact with skirt":"与裙子互动","Interact with socks":"与袜子互动",
+  "Jewelry":"珠宝","Mask":"面具","Material":"材质","Neckline":"领口","Other":"其他","Pants":"裤子","Pattern":"图案",
+  "Scarf":"围巾","Shirt":"衬衫","Shoes":"鞋子","Skirt":"裙子","Socks":"袜子","Soles":"鞋底","Sportswear":"运动服",
+  "Style":"风格","Swimwear":"泳装","Trinkets":"小饰品","Uniform":"制服",
+  // Facial expression and action 表情动作
+  "Angry":"生气","Basic Actions":"基本动作","Cry":"哭泣","Disdain":"轻蔑","Hand actions":"手部动作",
+  "Hand actions (Grab something)":"手部动作（抓握）","Hand actions (Holding)":"手部动作（手持）",
+  "Hand actions (Put somewhere)":"手部动作（放置）","Leg actions":"腿部动作","Other actions":"其他动作",
+  "Other expressions":"其他表情","Smile":"微笑","Unhappy":"不开心",
+  // Image 画风
+  "Art faction":"画派","Art style":"画风","Art type":"艺术类型","Artist style":"画家风格","Background":"背景",
+  "Brush":"笔触","Color":"色彩","Lighting":"光线","Quality":"质量","Realistic":"写实","Sketch":"素描",
+  // Environment 环境
+  "Atmosphere":"氛围","Cloud":"云","Nature":"自然","Season":"季节","Sky":"天空","Water":"水","Weather":"天气",
+  // Scene 场景
+  "Bathroom":"浴室","Bedding":"床品","City":"城市","Floor":"地板","Furniture":"家具","Indoor":"室内","Outdoor":"室外",
+  // Items 物品
+  "Animal":"动物","Digital devices":"电子设备","Food":"食物","Musical Instruments":"乐器","Other items":"其他物品",
+  "Plant":"植物","Study supplies":"学习用品","Tableware":"餐具","Weapon":"武器",
+  // Camera 镜头
+  "Camera":"相机","Camera angle":"拍摄角度","Close-up":"特写","Effect":"特效","Other compositions":"其他构图",
+  "Protagonist action":"主角动作",
+  // Hanfu 汉服
+  "Chest pleated skirt":"胸褶裙","Chest po skirt":"胸破裙","Long shan":"长衫","Long upper shan":"长上襦",
+  "Ming style:":"明制","Pibo":"披帛","Pleated skirt":"褶裙","Short shan":"短衫","Song style:":"宋制",
+  "Songmo":"宋抹","Tang style:":"唐制","Upper shan":"上襦","Waistband":"腰带",
+  // Negative Prompt 负面提示词
+  "Embeddings":"嵌入向量","Image":"图像","Person":"人物",
+  // 兜底
+  "未分组":"未分组",
+};
+// 渲染二级分组 tab（仿 weilin sub-group-tab；自动激活第一个分组）
+function renderSubLibCats() {
+  const groups = [];   // [{group, count}]
+  const seen = {};
+  state.libItems.forEach(t => {
+    if ((t.cat || "其他") !== state.libActiveCat) return;
+    const g = t.group || "未分组";
+    if (!seen[g]) { seen[g] = {group: g, count: 0}; groups.push(seen[g]); }
+    seen[g].count++;
+  });
+  // 当前激活的二级分组不存在时，自动激活第一个
+  if (!groups.some(g => g.group === state.libSubActive)) {
+    state.libSubActive = groups.length ? groups[0].group : "";
+  }
+  const el = document.getElementById("libSubCats");
+  if (!el) return;
+  el.innerHTML = groups.map(g => {
+    const active = g.group === state.libSubActive ? "active" : "";
+    const zh = GROUP_ZH[g.group] || g.group;
+    return `<div class="sub-group-tab ${active}" data-group="${g.group.replace(/"/g,'&quot;')}" onclick="setSubLibCat('${g.group.replace(/'/g,"\\'")}')" title="${g.group}">
+      ${zh}<span class="lib-cat-count">${g.count}</span>
+    </div>`;
+  }).join("");
+}
+
+function setLibCat(cat) {
+  state.libActiveCat = cat;
+  state.libSubActive = "";   // 切一级分类时重置二级分组（自动选第一个）
+  state.libSearchQ = "";
+  const si = document.getElementById("libSearch");
+  if (si) si.value = "";
+  renderLibCats();
+  renderSubLibCats();
+  renderLibList();
+}
+
+function setSubLibCat(group) {
+  state.libSubActive = group;
+  renderSubLibCats();
+  renderLibList();
+}
+
+function libSearch() {
+  state.libSearchQ = document.getElementById("libSearch").value.trim();
+  renderLibList();
+}
+
+// 渲染当前二级分组的标签（英文在上 中文在下）
+function renderLibList() {
+  const el = document.getElementById("libList");
+  if (!el) return;
+  const q = (state.libSearchQ || "").toLowerCase();
+  let items;
+  if (q) {
+    // 搜索时跨分类/分组显示
+    items = state.libItems.filter(t => t.en.toLowerCase().includes(q) || (t.zh || "").toLowerCase().includes(q));
+  } else {
+    items = state.libItems.filter(t => (t.cat || "其他") === state.libActiveCat && (t.group || "未分组") === state.libSubActive);
+  }
+  items = items.slice(0, 300);
+  el.innerHTML = items.map(t => `
+    <span class="lib-tag" data-en="${escHtml(t.en)}" title="${escHtml(t.zh || "")}" style="${t.color?`background:color-mix(in srgb, ${t.color} var(--lib-tint, 36%), var(--chip-bg));border-color:transparent;`:`background:color-mix(in srgb, rgba(201, 179, 126, .35) 28%, var(--chip-bg));border-color:transparent;`}">
+      <span class="en">${escHtml(t.en)}</span>${t.zh ? `<span class="zh">${escHtml(t.zh)}</span>` : ""}
+    </span>`).join("") || `<div style="color:var(--text-sub);padding:10px;">无匹配标签</div>`;
+}
+
+// 词库标签点击：直接添加到当前选中图片（替代原弹窗待添加流程）
+function libPick(en) {
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) { setMsg("请先选择图片，再从词库添加"); return; }
+  pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+  let addedCount = 0;
+  sel.forEach(img => { if (!img.tags.includes(en)) { img.tags.push(en); addedCount++; } });
+  rescanStats();  // G2：词库添加后刷新侧栏统计
+  renderGrid();
+  setMsg(addedCount
+    ? `已为 ${addedCount} 张图片添加标签: ${en}（未保存）`
+    : `该标签已存在于所选图片中（未新增）`);
+}
+
+// 读取 LLM 用户提示词（编辑条顶栏单行框，附加给初筛/翻译请求）
+function getLlmUserPrompt() {
+  const el = document.getElementById("llmUserPrompt");
+  return el ? el.value.trim() : "";
+}
+
+// ---------- LLM 翻译 ----------
+// 翻译指定标签集合（去重未翻译的；共享请求与回填逻辑）
+function doTranslate(tags, doneMsg) {
+  const unknown = tags.filter(t => !state.zhMap[t] || state.zhMap[t] === t);
+  if (!unknown.length) { setMsg(doneMsg || "所有标签都已有翻译"); return; }
+  setMsg(`翻译中... ${unknown.length} 个标签`);
+  // 注意：LLM 用户提示词只对初筛生效，翻译不带（用户明确要求）
+  api("/api/translate/llm", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tags: unknown.slice(0, 500)}) }).then(r => {
+    if (r.error) { setMsg("" + r.error); return; }
+    Object.entries(r.translated || {}).forEach(([k, v]) => { state.zhMap[k] = v; });
+    updateZhStats();
+    renderAllTags(); renderCommonTags(); renderGrid();
+    setMsg(`翻译完成：新增 ${Object.keys(r.translated||{}).length} 条（已缓存）`);
+  });
+}
+// 翻译全部未翻译标签（右键菜单"翻译全部"）
+function translateMissing() {
+  doTranslate(state.tagStats.map(t => t.tag));
+}
+// 翻译当前选中图片的标签（单击默认：编辑条显示的标签，单图=该图，多图=并集）
+function translateVisible() {
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) { setMsg("未选择图片"); return; }
+  const tags = [...new Set(sel.flatMap(img => img.tags))];
+  doTranslate(tags, "当前图片标签都已有翻译");
+}
+// 右键菜单：显示在鼠标位置
+function showTranslateMenu(e) {
+  e.preventDefault();
+  const m = document.getElementById("translateMenu");
+  m.style.display = "block";
+  m.style.left = Math.min(e.clientX, window.innerWidth - 200) + "px";
+  m.style.top = Math.min(e.clientY, window.innerHeight - 60) + "px";
+}
+function hideTranslateMenu() {
+  document.getElementById("translateMenu").style.display = "none";
+}
+
+// ---------- 初筛（引擎见设置：自动/LM Studio/云端/vLLM） ----------
+
+// 标签数组是否相同（顺序无关）
+function sameTags(a, b) {
+  return a.length === b.length && a.every(t => b.includes(t));
+}
+
+// 初筛：统一批量判定"当前显示的标签"（与编辑条 chips 一致：单图=该图全部标签，多图=并集）
+// 防呆：所有图都有记录且快照与当前显示标签一致 → 跳过（已筛过且标签没变）
+function screenSelected() {
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  const pool = sel.length ? sel : state.images;
+  if (!pool.length) { setMsg("没有可初筛的图片"); return; }
+  // 当前显示的标签集合
+  let shown = [];
+  if (pool.length === 1) shown = pool[0].tags.slice();
+  else {
+    const union = new Set();
+    pool.forEach(img => img.tags.forEach(t => union.add(t)));
+    shown = [...union];
+  }
+  if (!shown.length) { setMsg("当前没有可判定的标签"); return; }
+  // 防呆：所有图都有记录且快照与当前显示标签一致才跳过
+  const allScreened = pool.every(img => {
+    const rec = state.screenMap[img.path];
+    return rec && sameTags(rec.tags, shown);
+  });
+  if (allScreened) {
+    setMsg(`已初筛（${pool.length} 张，${shown.length} 个标签，无变化）`);
+    return;
+  }
+  setMsg(`正在初筛（${shown.length} 个标签）...`);
+  screenCommonTags(pool, shown);
+}
+
+// 批量初筛：一次判定当前显示标签，verdicts 应用到所有选中图片（删除→各自丢弃区）
+function screenCommonTags(sel, commonTags) {
+  const userPrompt = getLlmUserPrompt();
+  api("/api/screen", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({images: [sel[0].path], tags: commonTags, user_prompt: userPrompt, system_prompt: getActiveLlmPrompt()}) }).then(r => {
+    if (r.error) { setMsg(`${r.error}`); return; }
+    const res = r.results && r.results[0];
+    if (!res || !res.ok) { setMsg("初筛失败"); return; }
+    const dels = (res.verdicts || []).filter(v => v.action === "delete").map(v => v.tag);
+    if (dels.length) {
+      pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+      sel.forEach(img => {
+        const toDrop = dels.filter(t => img.tags.includes(t));
+        if (!toDrop.length) return;
+        img.tags = img.tags.filter(t => !toDrop.includes(t));
+        state.discardMap[img.path] = [...(state.discardMap[img.path] || []), ...toDrop];
+      });
+    }
+    // 标记已筛（防呆）：池内所有图写入记录，快照=判定时的标签集合；
+    // 用户不再编辑则稳定跳过；标签编辑/放回后变化 → 自动重筛
+    sel.forEach(img => { state.screenMap[img.path] = {tags: commonTags, verdicts: res.verdicts || []}; });
+    renderGrid(); renderEditor();
+    setMsg(`初筛完成：判定 ${commonTags.length} 个标签，${dels.length} 个已移入丢弃区`);
+  }).catch(e => { setMsg("初筛请求失败: " + e.message); });
+}
+
+// ---------- 设置 ----------
+let _settingsSaveTimer = null;
+// LLM 系统提示词管理：state.llmPrompts=[{title,content}]，state.llmPromptActive=-1=内置默认
+function renderLlmPromptList() {
+  const el = document.getElementById("llmPromptList");
+  if (!el) return;
+  const ps = state.llmPrompts || [];
+  const active = typeof state.llmPromptActive === "number" ? state.llmPromptActive : -1;
+  const rows = [`<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;${active===-1?"background:var(--bg-hover);":""}">
+      <input type="radio" name="llmPrompt" ${active===-1?"checked":""} onchange="llmPromptSelect(-1)" />
+      <span style="font-size:12.5px;">内置默认（${document.getElementById("vllmMode").value==="true"?"视觉版":"文本版"}）</span>
+    </label>`];
+  ps.forEach((p, i) => {
+    rows.push(`<label style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;cursor:pointer;${active===i?"background:var(--bg-hover);":""}">
+      <input type="radio" name="llmPrompt" ${active===i?"checked":""} onchange="llmPromptSelect(${i})" />
+      <span style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(p.title||"(未命名)").replace(/</g,"&lt;")}</span>
+      <span style="font-size:10px;color:var(--text-faint);font-family:var(--font-mono);">${(p.content||"").length} 字</span>
+    </label>`);
+  });
+  el.innerHTML = rows.join("");
+  // 选中项内容载入编辑区
+  const t = document.getElementById("llmPromptTitle");
+  const c = document.getElementById("llmPromptContent");
+  if (active >= 0 && ps[active]) {
+    t.value = ps[active].title || "";
+    c.value = ps[active].content || "";
+  } else {
+    t.value = "";
+    c.value = "";
+  }
+}
+function llmPromptSelect(idx) {
+  state.llmPromptActive = idx;
+  renderLlmPromptList();
+  saveSettings();  // 选中即保存
+}
+function llmPromptSave(isUpdate) {
+  const t = document.getElementById("llmPromptTitle");
+  const c = document.getElementById("llmPromptContent");
+  const title = (t.value || "").trim();
+  const content = c.value || "";
+  if (!title) { setMsg("请输入提示词标题"); return; }
+  const ps = state.llmPrompts || [];
+  const active = typeof state.llmPromptActive === "number" ? state.llmPromptActive : -1;
+  if (isUpdate && active >= 0 && ps[active]) {
+    ps[active] = {title, content};
+  } else {
+    ps.push({title, content});
+    state.llmPromptActive = ps.length - 1;
+  }
+  state.llmPrompts = ps;
+  renderLlmPromptList();
+  saveSettings();
+  setMsg(`提示词已保存: ${title}`);
+}
+function llmPromptDelete() {
+  const ps = state.llmPrompts || [];
+  const active = typeof state.llmPromptActive === "number" ? state.llmPromptActive : -1;
+  if (active < 0 || !ps[active]) { setMsg("请先选中要删除的自定义提示词"); return; }
+  ps.splice(active, 1);
+  state.llmPrompts = ps;
+  state.llmPromptActive = ps.length ? Math.min(active, ps.length - 1) : -1;
+  renderLlmPromptList();
+  saveSettings();
+  setMsg("提示词已删除");
+}
+// 当前生效的系统提示词内容（空 = 内置默认）
+function getActiveLlmPrompt() {
+  const ps = state.llmPrompts || [];
+  const active = typeof state.llmPromptActive === "number" ? state.llmPromptActive : -1;
+  return (active >= 0 && ps[active]) ? (ps[active].content || "") : "";
+}
+// 重置初筛：将当前选中图片（单图或本批）初筛丢弃的标签全部放回原图
+// （丢弃区标签回归；支持撤销——mem 快照带 disc）
+function restoreAllDiscarded() {
+  const sel = state.images.filter(img => state.selected.has(img.path));
+  if (!sel.length) { setMsg("未选择图片"); return; }
+  pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+  let n = 0;
+  sel.forEach(img => {
+    const disc = state.discardMap[img.path] || [];
+    if (!disc.length) return;
+    disc.forEach(t => { if (!img.tags.includes(t)) { img.tags.push(t); n++; } });
+    delete state.discardMap[img.path];
+  });
+  rescanStats();
+  renderGrid();
+  setMsg(n ? `已回归 ${n} 个丢弃标签（可撤销）` : "所选图片无丢弃标签");
+}
+// 应用界面字号档位（xs/sm/default/lg → html data-font 属性控制 CSS 变量）
+function applyFontSize(size) {
+  const v = ["xs", "sm", "default", "lg"].includes(size) ? size : "default";
+  document.documentElement.setAttribute("data-font", v);
+}
+function openSettings() {
+  api("/api/settings").then(cfg => {
+    const lm = cfg.lmstudio || {};
+    const sp = cfg.screen_provider || "auto";
+    const html = `<div class="modal-head"><h3>设置</h3><button class="close-x" onclick="closeModal()">✕</button></div>
+      <div class="modal-body">
+        <div class="form-hint" style="color:var(--ok);margin-bottom:10px;">所有参数修改后自动保存缓存，无需点保存</div>
+        <h4 style="margin-bottom:10px;">DeepSeek 翻译 API</h4>
+        <div class="form-row"><label>API Key</label>
+          <div style="display:flex;gap:6px;">
+            <input id="dsKey" type="password" value="${cfg.deepseek.api_key||""}" placeholder="sk-..." style="flex:1;" />
+            <button class="btn" onclick="toggleKeyVisibility('dsKey', this)" title="显示/隐藏">显示</button>
+          </div>
+        </div>
+        <div class="form-row"><label>Base URL</label><input id="dsUrl" value="${cfg.deepseek.base_url||"https://api.deepseek.com"}" /></div>
+        <div class="form-row"><label>模型</label><input id="dsModel" value="${cfg.deepseek.model||"deepseek-chat"}" /></div>
+        <h4 style="margin:16px 0 10px;">初筛引擎</h4>
+        <div class="form-row"><label>初筛使用</label>
+          <select id="screenProvider">
+            <option value="auto" ${sp==="auto"?"selected":""}>自动（LM Studio 没配置就用云端）</option>
+            <option value="lmstudio" ${sp==="lmstudio"?"selected":""}>LM Studio / vLLM（本地）</option>
+            <option value="deepseek" ${sp==="deepseek"?"selected":""}>云端 DeepSeek</option>
+          </select>
+        </div>
+        <div class="form-row"><label>Base URL</label><input id="lmUrl" value="${lm.base_url||"http://localhost:1234/v1"}" /></div>
+        <div class="form-row"><label>模型名（留空用服务端默认）</label><input id="lmModel" value="${lm.model||""}" /></div>
+        <div class="form-row"><label>vLLM 模式</label>
+          <select id="vllmMode">
+            <option value="false" ${!lm.vllm_enabled?"selected":""}>关闭（普通文本初筛）</option>
+            <option value="true" ${lm.vllm_enabled?"selected":""}>启用（多模态输入 + 视觉版提示词，复用上方地址/模型）</option>
+          </select>
+        </div>
+        <h4 style="margin:16px 0 10px;">LLM 系统提示词（初筛用）</h4>
+        <div class="form-hint" style="margin-bottom:8px;">可保存多套自定义系统提示词（带标题），选中即生效；内置默认 = 程序内置的文本版/视觉版提示词</div>
+        <div id="llmPromptList" style="display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto;margin-bottom:10px;">
+        </div>
+        <div class="form-row"><label>标题</label><input id="llmPromptTitle" placeholder="如：批量判定精简版" /></div>
+        <div class="form-row"><label>内容（留空 = 使用内置默认提示词）</label>
+          <textarea id="llmPromptContent" rows="4" style="width:100%;padding:7px 10px;border-radius:var(--radius-md);border:1px solid var(--chip-border);background:var(--bg-input);color:var(--text);font-size:12.5px;resize:vertical;font-family:var(--font-mono);"></textarea>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:4px;">
+          <button class="btn" onclick="llmPromptSave(false)" title="用当前标题+内容新增一条提示词">添加</button>
+          <button class="btn" onclick="llmPromptSave(true)" title="覆盖保存当前选中项的标题/内容">更新选中</button>
+          <button class="btn danger" onclick="llmPromptDelete()" title="删除当前选中的自定义提示词">删除选中</button>
+        </div>
+        <h4 style="margin:16px 0 10px;">界面</h4>
+        <div class="form-row"><label>界面字号</label>
+          <select id="fsSize">
+            <option value="xs" ${(cfg.font_size||"default")==="xs"?"selected":""}>极小（13px）</option>
+            <option value="sm" ${(cfg.font_size||"default")==="sm"?"selected":""}>小（14px）</option>
+            <option value="default" ${(cfg.font_size||"default")==="default"?"selected":""}>中（15px）</option>
+            <option value="lg" ${(cfg.font_size||"default")==="lg"?"selected":""}>大（16px）</option>
+          </select>
+        </div>
+        <h4 style="margin:16px 0 10px;">预览图</h4>
+        <div class="form-row"><label>缩略图尺寸（0=关闭用原图，默认 512 防卡顿）</label><input id="psSize" type="number" min="0" max="2048" step="64" value="${cfg.preview_size||0}" /></div>
+        <h4 style="margin:16px 0 10px;">保存</h4>
+        <div class="form-row"><label>全部保存并发数（默认 100）</label><input id="saveConc" type="number" min="1" max="500" step="1" value="${cfg.save_concurrency||100}" /></div>
+        <div class="form-hint">词库/离线词典已封装在项目 taglib/ 目录内（不依赖外部插件）<br>标签库: ${cfg.taglib_path||"未找到"}<br>离线词典: ${cfg.dict_path||"未找到"}</div>
+      </div>
+      <div class="modal-foot"><span style="font-size:12px;color:var(--text-sub);margin-right:auto;">修改即自动保存</span><button class="btn primary" onclick="closeModal()">完成</button></div>`;
+    openModal(html);
+    // 初始化 LLM 系统提示词列表（内置默认 + 自定义项）
+    state.llmPrompts = (cfg.llm_prompts || []).map(p => ({title: p.title || "", content: p.content || ""}));
+    state.llmPromptActive = typeof cfg.llm_prompt_active === "number" ? cfg.llm_prompt_active : -1;
+    renderLlmPromptList();
+    // 所有控件 change/input 自动保存（防抖 500ms）
+    const autoFields = ["dsKey", "dsUrl", "dsModel", "screenProvider", "lmUrl", "lmModel", "vllmMode", "fsSize", "psSize", "saveConc"];
+    autoFields.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const evt = el.tagName === "SELECT" ? "change" : "input";
+      el.addEventListener(evt, () => { clearTimeout(_settingsSaveTimer); _settingsSaveTimer = setTimeout(saveSettings, 500); });
+    });
+  });
+}
+
+// API Key 显示/隐藏切换（type password <-> text）
+function toggleKeyVisibility(inputId, btn) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  const hidden = el.type === "password";
+  el.type = hidden ? "text" : "password";
+  btn.textContent = hidden ? "隐藏" : "显示";
+}
+
+function saveSettings() {
+  const body = {
+    deepseek: {
+      api_key: document.getElementById("dsKey").value.trim(),
+      base_url: document.getElementById("dsUrl").value.trim(),
+      model: document.getElementById("dsModel").value.trim(),
+    },
+    lmstudio: {
+      base_url: document.getElementById("lmUrl").value.trim(),
+      model: document.getElementById("lmModel").value.trim(),
+      vllm_enabled: document.getElementById("vllmMode").value === "true",
+    },
+    screen_provider: document.getElementById("screenProvider").value,
+    save_concurrency: parseInt(document.getElementById("saveConc").value, 10) || 100,
+    preview_size: parseInt(document.getElementById("psSize").value, 10) || 0,
+    llm_prompts: state.llmPrompts || [],
+    llm_prompt_active: (typeof state.llmPromptActive === "number" ? state.llmPromptActive : -1),
+    font_size: document.getElementById("fsSize").value,
+  };
+  api("/api/settings", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body) }).then(r => {
+    if (r.ok) {
+      state.previewSize = body.preview_size;
+      state.saveConcurrency = body.save_concurrency;
+      applyFontSize(body.font_size);  // 字号即时生效
+      setMsg("设置已自动缓存" + (state.previewSize ? `（缩略图 ${state.previewSize}px）` : "（原图模式）") + `，全部保存并发 ${state.saveConcurrency}`);
+      renderGrid(); // 立即用新缩略图尺寸重绘
+    }
+  });
+}
+
+// ---------- 弹窗 ----------
+function openModal(html) {
+  document.getElementById("modalBox").innerHTML = html;
+  document.getElementById("modalRoot").classList.add("show");
+}
+function closeModal() {
+  document.getElementById("modalRoot").classList.remove("show");
+}
+
+// ---------- 事件委托（避免路径/标签内联转义 bug） ----------
+function bindDelegates() {
+  // 键盘快捷键：Ctrl+Z 撤销 / Ctrl+Y 或 Ctrl+Shift+Z 重做
+  document.addEventListener("keydown", e => {
+    // G3：输入框/文本域内不拦截 Ctrl+Z/Y（保留浏览器原生输入撤销）
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      if (e.shiftKey) redo(); else undo();
+      e.preventDefault();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+      redo();
+      e.preventDefault();
+    }
+  });
+  // 点击页面其他位置关闭翻译右键菜单
+  document.addEventListener("click", e => {
+    if (!e.target.closest("#translateMenu")) hideTranslateMenu();
+  });
+  // 文件夹路径输入：防抖自动扫描（输入中 600ms 防抖；失焦立即扫描；回车立即扫描）
+  document.getElementById("folderInput").addEventListener("input", autoScanInput);
+  document.getElementById("folderInput").addEventListener("blur", autoScanBlur);
+  document.getElementById("folderInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") { clearInterval(_scanPollTimer); scanFolder(); }
+  });
+  // 缓存上次填写的路径：失焦时用 sendBeacon 记录（页面刷新/关闭时不丢失——普通 fetch 会被卸载中断）
+  document.getElementById("folderInput").addEventListener("blur", () => {
+    const v = document.getElementById("folderInput").value.trim();
+    if (!v) return;
+    try {
+      navigator.sendBeacon("/api/recent", new Blob([JSON.stringify({folder: v})], {type: "application/json"}));
+    } catch (e) {
+      api("/api/recent", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({folder: v}) });
+    }
+  });
+  // 图片卡片：点击切换选中（data-path 取路径，避免 \t 等转义破坏）
+  document.getElementById("grid").addEventListener("click", e => {
+    const card = e.target.closest(".card");
+    if (card && card.dataset.path) toggleSelect(card.dataset.path, e.ctrlKey || e.metaKey);
+  });
+  // 全部标签行：点击筛选
+  document.getElementById("allTags").addEventListener("click", e => {
+    const row = e.target.closest(".tag-row");
+    if (row && row.dataset.tag) setFilter(row.dataset.tag);
+  });
+  // 共同标签 chip：点击筛选
+  document.getElementById("commonTags").addEventListener("click", e => {
+    const c = e.target.closest(".chip");
+    if (c && c.dataset.tag) setFilter(c.dataset.tag);
+  });
+  // 编辑条标签 chip：点击 ✕ 移除（点击 chip 本体不再删除，仅拖拽排序）
+  document.getElementById("editorTags").addEventListener("click", e => {
+    const del = e.target.closest(".del");
+    if (del) {
+      const c = del.closest(".chip");
+      if (c && c.dataset.tag) removeTagFromSelection(c.dataset.tag);
+      return;
+    }
+    // 单击 chip 本体（未拖拽）→ 进入编辑模式（修改标签，提交后自动翻译）
+    if (window.__justDragged) return;  // 拖拽刚结束，忽略这次 click
+    const chip = e.target.closest(".chip");
+    if (chip && chip.dataset.tag && !chip.querySelector("input")) {
+      startEditTag(chip);
+    }
+  });
+  // 丢弃区 chip：点击 chip 本体 = 放回该标签到对应图片（data-img 标记所属图片）
+  document.getElementById("screenBox").addEventListener("click", e => {
+    // ✕ = 彻底移除（不再放回）；chip 本体 = 放回原标签
+    const del = e.target.closest(".del");
+    if (del) {
+      const c = del.closest(".chip");
+      if (c && c.dataset.tag && c.dataset.img) removeFromDiscard(c.dataset.img, c.dataset.tag);
+      return;
+    }
+    const c = e.target.closest(".chip");
+    if (c && c.dataset.tag && c.dataset.img) restoreDiscarded(c.dataset.img, c.dataset.tag);
+  });
+  // ========== 编辑条标签拖拽排序（SortableJS，仿 weilin 节点方案） ==========
+  // 说明：weilin 节点内置 SortableJS（自动避让动画/ghost 克隆/跨行处理），
+  // 直接复用成熟库，避免手写拖拽的动画打断/引用过期/鬼畜问题
+  const et = document.getElementById("editorTags");
+  window.__initSortable = function initSortable() {
+    if (window.__sortable) window.__sortable.destroy();
+    window.__sortable = new Sortable(et, {
+      animation: 150,          // 避让动画时长（与 weilin 节点一致）
+      ghostClass: "chip-drag-ghost",   // 被拖元素的幽灵样式
+      dragClass: "chip-drag-active",
+      chosenClass: "chip-drag-chosen",
+      // 强制走 mousedown/mousemove 模拟拖拽（与手写方案同路径，真实 Edge 实测有效）：
+      // SortableJS 默认在 Chromium 用 pointerdown + 原生 dragstart，本机（触摸屏+150% DPI）
+      // 该路径拖拽不启动；forceFallback 强制用鼠标事件模拟，与用户第一版能拖的方案一致。
+      forceFallback: true,
+      fallbackOnBody: true,    // ghost 挂 body，避免被 #editorTags 的 overflow 容器裁剪
+      fallbackClass: "chip-drag-ghost",  // 关键：克隆 ghost 用 fallbackClass（默认 sortable-fallback），
+                                         // 必须指向我们的 ghost 类，否则 .chip 的 transition 0.12s
+                                         // 会作用在 ghost 上 → 拖快时 ghost 滞后于鼠标（实测 400px+）
+      fallbackTolerance: 4,    // 4px 内视为点击（不误触发拖拽）
+      draggable: ".chip",      // 显式指定可拖元素（仿 weilin 的 draggable: ".prompt-tag"）
+      handle: ".en-line, .zh-line",  // 仿 weilin 的 handle: ".prompt-tag-value"：
+                                     // 只在文字区起拖，✕ 永远不触发拖拽 → 点击删除稳定
+      // ⚠️ 不要加 filter: ".del"！实测：按下点落在 ✕ 上（chip 右下角 12x12 区域）再拖动，
+      // filter 会拦截整个拖拽 -> 无 ghost、无避让、顺序不变（用户报告的"完全拖不动"症状）。
+      // 点击 ✕（按下不动即松开）的 click 事件不受影响，仍正常删除标签；
+      // 按住 ✕ 拖动则视为拖拽排序，符合用户预期。
+      onStart: evt => {
+        // 多选（并集展示）时明确提示不可拖拽，避免用户困惑
+        const sel = state.images.filter(img => state.selected.has(img.path));
+        if (sel.length !== 1) setMsg("多选状态不可拖动排序，单击图片切换单选后即可拖动");
+      },
+      onMove: evt => {
+        // 多选选中（并集展示）时禁止拖拽——DOM 顺序与 tags 不对应，拖了会错乱
+        const sel = state.images.filter(img => state.selected.has(img.path));
+        return sel.length === 1;
+      },
+      onEnd: evt => {
+        // 拖拽结束标记：阻止紧随的 click 进入标签编辑模式
+        window.__justDragged = true;
+        setTimeout(() => { window.__justDragged = false; }, 200);
+        // 仅单图选中时可排序；多图并集展示不允许重排
+        const sel = state.images.filter(img => state.selected.has(img.path));
+        if (sel.length !== 1 || evt.oldIndex === evt.newIndex) return;
+        const img = sel[0];
+        pushUndo("mem", {images: [{path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}]});
+        const [moved] = img.tags.splice(evt.oldIndex, 1);
+        img.tags.splice(evt.newIndex, 0, moved);
+        setMsg(`已调整标签顺序: ${moved}`);
+        // Sortable 已重排 DOM，与 img.tags 一致，无需再 renderGrid（避免闪烁）
+      },
+    });
+  };
+  // 初始化（renderEditor 每次重建 chips 后也会调用 __initSortable）
+  window.__initSortable();
+
+  // 词库面板：lib-tag 点击直接添加（委托到 editor，面板在编辑条内）
+  document.getElementById("editor").addEventListener("click", e => {
+    const lt = e.target.closest(".lib-tag");
+    if (lt && lt.dataset.en) libPick(lt.dataset.en);
+  });
+  // ========== 分割条拖拽（调整区域大小，其他区域自动适应） ==========
+  const sidebar = document.getElementById("sidebar");
+  const editor = document.getElementById("editor");
+  const vs = document.getElementById("vSplitter");
+  const hs = document.getElementById("hSplitter");
+  // 垂直分割条：调整左侧标签面板宽度（min 180 / max 560）
+  vs.addEventListener("mousedown", e => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebar.offsetWidth;
+    vs.classList.add("resizing");
+    document.body.classList.add("resizing");
+    const onMove = ev => {
+      const w = Math.min(560, Math.max(180, startW + (ev.clientX - startX)));
+      sidebar.style.width = w + "px";
+    };
+    const onUp = () => {
+      vs.classList.remove("resizing");
+      document.body.classList.remove("resizing");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      try { localStorage.setItem("loraSidebarW", String(sidebar.offsetWidth)); } catch (err) {}
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+  // 水平分割条：调整底部编辑条高度（min 100 / max 75vh）
+  hs.addEventListener("mousedown", e => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = editor.offsetHeight || 280;
+    hs.classList.add("resizing");
+    document.body.classList.add("resizing");
+    const onMove = ev => {
+      const h = Math.min(window.innerHeight * 0.75, Math.max(100, startH + (startY - ev.clientY)));
+      editor.style.height = h + "px";
+    };
+    const onUp = () => {
+      hs.classList.remove("resizing");
+      document.body.classList.remove("resizing");
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      try { localStorage.setItem("loraEditorH", String(editor.offsetHeight)); } catch (err) {}
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+  // 恢复持久化的分割尺寸
+  try {
+    const sw = parseInt(localStorage.getItem("loraSidebarW"), 10);
+    if (sw >= 180 && sw <= 560) sidebar.style.width = sw + "px";
+    const eh = parseInt(localStorage.getItem("loraEditorH"), 10);
+    if (eh >= 100) editor.style.height = eh + "px";
+  } catch (err) {}
+}
+
+// ---------- 状态消息 ----------
+function setMsg(m) { document.getElementById("stMsg").textContent = m; }
+
+// ---------- 初始化 ----------
+(function init() {
+  const saved = localStorage.getItem("loraTagTheme");
+  applyTheme(saved || "dark");
+  // 清理历史测试污染的初筛模式记忆（二级菜单已删除，统一批量判定，无需记忆）
+  try { localStorage.removeItem("loraScreenMode"); localStorage.removeItem("loraScreenModeV2"); } catch (e) {}
+  bindDelegates();
+  // 预加载词库（输入框添加标签需优先匹配词库：英文忽略下划线 / 中文匹配翻译）
+  loadLibAll();
+  // 恢复最近文件夹
+  api("/api/settings").then(cfg => {
+    if (cfg.recent_dirs && cfg.recent_dirs.length) {
+      document.getElementById("folderInput").value = cfg.recent_dirs[0];
+      document.getElementById("folderInput").placeholder = `最近: ${cfg.recent_dirs[0]}`;
+      scanFolder(); // 最近目录自动扫描（无需输入/回车）
+    }
+    if (cfg.preview_size) state.previewSize = cfg.preview_size;
+    else state.previewSize = 0;
+    applyFontSize(cfg.font_size);  // 界面字号档位
+    if (cfg.save_concurrency) state.saveConcurrency = cfg.save_concurrency;
+  });
+})();
+
+/* ========== 背景互动：鼠标跟随金色光晕（rAF 平滑，不干扰任何现有逻辑） ========== */
+(function () {
+  const glow = document.getElementById("mouseGlow");
+  if (!glow) return;
+  let tx = -9999, ty = -9999, cx = -9999, cy = -9999, raf = null;
+  document.addEventListener("mousemove", e => {
+    tx = e.clientX; ty = e.clientY;
+    if (!raf) raf = requestAnimationFrame(step);
+  }, { passive: true });
+  function step() {
+    cx += (tx - cx) * 0.14;
+    cy += (ty - cy) * 0.14;
+    glow.style.left = Math.round(cx) + "px";
+    glow.style.top = Math.round(cy) + "px";
+    if (Math.abs(tx - cx) > 1.5 || Math.abs(ty - cy) > 1.5) raf = requestAnimationFrame(step);
+    else raf = null;
+  }
+})();
+</script>
+<!-- 翻译二级菜单（body 直属：避开 #editor 的 backdrop-filter/transform 导致 fixed 定位失效） -->
+<div id="translateMenu" style="display:none;position:fixed;z-index:999;min-width:190px;background:var(--bg-elev);border:1px solid var(--border-strong);border-radius:6px;box-shadow:var(--shadow-lg);padding:4px;font-size:var(--fs-base);">
+  <div style="padding:7px 12px;border-radius:4px;cursor:pointer;white-space:nowrap;" onclick="hideTranslateMenu(); translateMissing()" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'">翻译全部（所有未翻译标签）</div>
+</div>
+</body>
+</html>
