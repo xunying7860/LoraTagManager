@@ -23,15 +23,26 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 # ---------- 路径常量（Windows 原生路径） ----------
-BASE_DIR = Path(__file__).resolve().parent
+# 路径：PyInstaller 打包（frozen）时——可写数据（config/cache/backups）放 exe 同目录，
+# 只读资源（taglib/static）放打包资源区 _MEIPASS；源码运行时两者同目录
+import sys as _sys
+if getattr(_sys, "frozen", False):
+    APP_DIR = Path(_sys.executable).resolve().parent
+    RES_DIR = Path(getattr(_sys, "_MEIPASS", APP_DIR))
+else:
+    APP_DIR = Path(__file__).resolve().parent
+    RES_DIR = APP_DIR
+
+BASE_DIR = APP_DIR  # 可写数据目录（config/cache/backups）
+RES_BASE = RES_DIR  # 只读资源目录（taglib/static）
 CONFIG_PATH = BASE_DIR / "config.json"
 CACHE_PATH = BASE_DIR / "cache.json"
 BACKUP_DIR = BASE_DIR / "backups"
 SCANNED_DIRS = set()  # G4/G5：已扫描目录白名单（/api/image /api/thumb 仅允许访问扫描过的目录内文件）
 
 # 词库/离线词典：已封装到项目内 taglib/ 目录（不跨目录调用外部插件）
-WEILIN_YAML = BASE_DIR / "taglib" / "taglib.yaml"
-DANBOORU_CSV = BASE_DIR / "taglib" / "danbooru_zh.csv"
+WEILIN_YAML = RES_BASE / "taglib" / "taglib.yaml"
+DANBOORU_CSV = RES_BASE / "taglib" / "danbooru_zh.csv"
 
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".avif"}
 
@@ -184,7 +195,7 @@ def load_zh_extra():
     if _zh_extra is not None:
         return _zh_extra
     _zh_extra = {}
-    p = BASE_DIR / "taglib" / "zh_extra.json"
+    p = RES_BASE / "taglib" / "zh_extra.json"
     if p.exists():
         try:
             _zh_extra = json.loads(p.read_text(encoding="utf-8"))
@@ -926,7 +937,7 @@ def taglib(q: str = ""):
 
 
 # ---------- 静态前端 ----------
-app.mount("/", StaticFiles(directory=str(BASE_DIR / "static"), html=True), name="static")
+app.mount("/", StaticFiles(directory=str(RES_BASE / "static"), html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn

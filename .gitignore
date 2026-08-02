@@ -13,3 +13,4 @@ diag_*.py
 exp_*.py
 measure_shot.py
 static/index.html.bak.pre-*
+build/, dist/, *.spec, *.log
