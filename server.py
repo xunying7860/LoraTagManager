@@ -61,6 +61,7 @@ DEFAULT_CONFIG = {
     "llm_prompts": [],
     "llm_prompt_active": -1,
     "font_size": "default",  # 界面字号：sm / default / lg
+    "translate_concurrency": 3,  # LLM 翻译并发数（1-8，默认 3）
 }
 
 
@@ -565,13 +566,15 @@ def translate_llm(req: TranslateReq):
     if not todo:
         return {"ok": True, "translated": [], "hit_cache": len([t for t in req.tags if t in cache])}
 
-    # 分批（每批 50 个标签）
+    # 分批（每批 50 个标签）+ 并发请求（并发数可调：translate_concurrency，默认 3）
     batch_size = 50
     result_map = {}
     url = ds.get("base_url", "https://api.deepseek.com").rstrip("/") + "/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    for i in range(0, len(todo), batch_size):
-        chunk = todo[i:i + batch_size]
+    concurrency = max(1, min(8, int(cfg.get("translate_concurrency", 3) or 3)))
+    chunks = [todo[i:i + batch_size] for i in range(0, len(todo), batch_size)]
+
+    def translate_chunk(chunk):
         if req.to_en:
             # 中文→英文方向（输入框输中文时自动转标签）
             prompt = (
@@ -596,19 +599,27 @@ def translate_llm(req: TranslateReq):
             "temperature": 0.1,
             "response_format": {"type": "json_object"},
         }
-        try:
-            r = requests.post(url, json=payload, headers=headers, timeout=120)
-            r.raise_for_status()
-            content = r.json()["choices"][0]["message"]["content"]
-            parsed = json.loads(content)
-            result_map.update(parsed)
-        except Exception as e:
-            return JSONResponse({"error": f"DeepSeek 翻译失败: {e}"}, status_code=502)
+        r = requests.post(url, json=payload, headers=headers, timeout=120)
+        r.raise_for_status()
+        content = r.json()["choices"][0]["message"]["content"]
+        return json.loads(content)
 
-    # 写缓存
+    # 并发请求各批（可调并发数），失败批不阻塞其他批
+    import concurrent.futures
+    errors = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as ex:
+        futures = {ex.submit(translate_chunk, c): c for c in chunks}
+        for f in concurrent.futures.as_completed(futures):
+            try:
+                result_map.update(f.result())
+            except Exception as e:
+                errors.append(str(e))
+    # 成功的先写缓存（部分失败也不浪费）
     for k, v in result_map.items():
         cache[k] = v
     save_cache(cache)
+    if errors:
+        return JSONResponse({"error": f"翻译部分失败（{len(errors)}/{len(chunks)} 批）：{errors[0][:120]}"}, status_code=502)
     return {"ok": True, "translated": result_map, "hit_cache": 0}
 
 
@@ -818,6 +829,7 @@ def get_settings():
         "llm_prompts": cfg.get("llm_prompts", []),
         "llm_prompt_active": cfg.get("llm_prompt_active", -1),
         "font_size": cfg.get("font_size", "default"),
+        "translate_concurrency": cfg.get("translate_concurrency", 3),
         "taglib_path": str(WEILIN_YAML) if WEILIN_YAML.exists() else "",
         "dict_path": str(DANBOORU_CSV) if DANBOORU_CSV.exists() else "",
     }
@@ -832,6 +844,7 @@ class SettingsReq(BaseModel):
     llm_prompts: list = []        # 自定义 LLM 系统提示词 [{title, content}]
     llm_prompt_active: int = -99  # 当前选中提示词索引（-1=内置默认）
     font_size: str = ""           # 界面字号：sm / default / lg
+    translate_concurrency: int = -1  # LLM 翻译并发数（1-8，默认 3）
 
 
 @app.post("/api/settings")
@@ -862,6 +875,8 @@ def post_settings(req: SettingsReq):
         cfg["llm_prompt_active"] = active
     if req.font_size in ("xs", "sm", "default", "lg"):
         cfg["font_size"] = req.font_size
+    if 1 <= req.translate_concurrency <= 8:
+        cfg["translate_concurrency"] = req.translate_concurrency
     save_config_enc(cfg)
     return {"ok": True, "settings": cfg}
 

@@ -1963,6 +1963,8 @@ function openSettings() {
         <div class="form-row"><label>缩略图尺寸（0=关闭用原图，默认 512 防卡顿）</label><input id="psSize" type="number" min="0" max="2048" step="64" value="${cfg.preview_size||0}" /></div>
         <h4 style="margin:16px 0 10px;">保存</h4>
         <div class="form-row"><label>全部保存并发数（默认 100）</label><input id="saveConc" type="number" min="1" max="500" step="1" value="${cfg.save_concurrency||100}" /></div>
+        <h4 style="margin:16px 0 10px;">翻译</h4>
+        <div class="form-row"><label>翻译并发数（1-8，默认 3）</label><input id="trConc" type="number" min="1" max="8" step="1" value="${cfg.translate_concurrency||3}" /></div>
         <div class="form-hint">词库/离线词典已封装在项目 taglib/ 目录内（不依赖外部插件）<br>标签库: ${cfg.taglib_path||"未找到"}<br>离线词典: ${cfg.dict_path||"未找到"}</div>
       </div>
       <div class="modal-foot"><span style="font-size:12px;color:var(--text-sub);margin-right:auto;">修改即自动保存</span><button class="btn primary" onclick="closeModal()">完成</button></div>`;
@@ -1972,7 +1974,7 @@ function openSettings() {
     state.llmPromptActive = typeof cfg.llm_prompt_active === "number" ? cfg.llm_prompt_active : -1;
     renderLlmPromptList();
     // 所有控件 change/input 自动保存（防抖 500ms）
-    const autoFields = ["dsKey", "dsUrl", "dsModel", "screenProvider", "lmUrl", "lmModel", "vllmMode", "fsSize", "psSize", "saveConc"];
+    const autoFields = ["dsKey", "dsUrl", "dsModel", "screenProvider", "lmUrl", "lmModel", "vllmMode", "fsSize", "psSize", "saveConc", "trConc"];
     autoFields.forEach(id => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -2005,6 +2007,7 @@ function saveSettings() {
     },
     screen_provider: document.getElementById("screenProvider").value,
     save_concurrency: parseInt(document.getElementById("saveConc").value, 10) || 100,
+    translate_concurrency: parseInt(document.getElementById("trConc").value, 10) || 3,
     preview_size: parseInt(document.getElementById("psSize").value, 10) || 0,
     llm_prompts: state.llmPrompts || [],
     llm_prompt_active: (typeof state.llmPromptActive === "number" ? state.llmPromptActive : -1),
