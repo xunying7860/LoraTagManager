@@ -328,31 +328,34 @@ def scan(req: ScanReq):
     images = []
     tag_counter = Counter()
     total_txt = 0
+    # 递归识别子文件夹（数据集可能按分类存子目录）：os.walk 遍历全部层级
     try:
-        entries = sorted(os.listdir(folder), key=lambda s: s.lower())
+        walker = sorted(os.walk(folder), key=lambda t: t[0].lower())
     except Exception as e:
         return JSONResponse({"error": f"读取目录失败: {e}"}, status_code=400)
 
-    for name in entries:
-        full = os.path.join(folder, name)
-        ext = os.path.splitext(name)[1].lower()
-        if ext not in IMG_EXTS or not os.path.isfile(full):
-            continue
-        txt_path = find_txt_for_image(full)
-        tags = []
-        if txt_path:
-            try:
-                tags = parse_tags(Path(txt_path).read_text(encoding="utf-8"))
-            except Exception:
+    for root, dirs, files in walker:
+        dirs.sort(key=str.lower)  # 子目录稳定顺序
+        for name in sorted(files, key=str.lower):
+            full = os.path.join(root, name)
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in IMG_EXTS or not os.path.isfile(full):
+                continue
+            txt_path = find_txt_for_image(full)
+            tags = []
+            if txt_path:
                 try:
-                    tags = parse_tags(Path(txt_path).read_text(encoding="gbk"))
+                    tags = parse_tags(Path(txt_path).read_text(encoding="utf-8"))
                 except Exception:
-                    tags = []
-        if txt_path:
-            total_txt += 1
-        for t in tags:
-            tag_counter[t] += 1
-        images.append({
+                    try:
+                        tags = parse_tags(Path(txt_path).read_text(encoding="gbk"))
+                    except Exception:
+                        tags = []
+            if txt_path:
+                total_txt += 1
+            for t in tags:
+                tag_counter[t] += 1
+            images.append({
             "name": name,
             "path": full,
             "txt": txt_path,
