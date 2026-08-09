@@ -47,6 +47,14 @@ DANBOORU_CSV = RES_BASE / "taglib" / "danbooru_zh.csv"
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".avif"}
 
 app = FastAPI(title="LoRA Tag Manager")
+# CORS：允许 localhost/127.0.0.1 互访——域名分片扩展连接池（翻译走 127.0.0.1、UI 走 localhost，互不排队）
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------- 配置读写 ----------
 DEFAULT_CONFIG = {
@@ -74,8 +82,15 @@ def load_config():
             _cfg_key_decrypt(cfg)  # api_key 解密回明文（内存用）
             return cfg
         except Exception:
-            pass
-    return json.loads(json.dumps(DEFAULT_CONFIG))
+            # 读取/解密失败：返回默认（仅内存），绝不覆盖原文件——防止用户配置被冲掉
+            return json.loads(json.dumps(DEFAULT_CONFIG))
+    # 文件确实不存在：自动创建默认配置（仅此一种创建途径；绝不备份、绝不覆盖已有配置）
+    cfg = json.loads(json.dumps(DEFAULT_CONFIG))
+    try:
+        save_config(cfg)
+    except Exception:
+        pass
+    return cfg
 
 
 def save_config(cfg):
@@ -128,7 +143,7 @@ def _cfg_key_decrypt(cfg):
 
 
 def save_config_enc(cfg):
-    """带加密的保存：先加密 key 再落盘"""
+    """带加密的保存：只写 config.json 本体，不产生任何备份副本"""
     cfg = json.loads(json.dumps(cfg))  # 深拷贝，不污染内存明文
     _cfg_key_encrypt(cfg)
     save_config(cfg)

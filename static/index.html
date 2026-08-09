@@ -684,6 +684,14 @@ footer#statusBar {
       </div>
       <div id="commonTags"></div>
     </div>
+    <!-- 共同标签丢弃区：共同标签 ✕ 删除后单独存放，可放回所有图片 -->
+    <div class="side-section" id="commonDiscardWrap" style="display:none;">
+      <div class="side-title">
+        <span class="dot">共同标签丢弃区（点击放回）</span>
+        <button class="btn" style="padding:2px 10px;font-size:11px;" onclick="restoreAllCommon()">全部放回</button>
+      </div>
+      <div id="commonDiscard"></div>
+    </div>
     <div class="side-section">
       <div class="side-title"><span>标签搜索</span></div>
       <div style="display:flex;gap:6px;align-items:center;">
@@ -758,7 +766,7 @@ footer#statusBar {
 </footer>
 
 <!-- ========== 弹窗容器 ========== -->
-<div id="modalRoot" onclick="if(event.target===this)closeModal()">
+<div id="modalRoot">
   <div class="modal" id="modalBox"></div>
 </div>
 
@@ -775,6 +783,7 @@ const state = {
   filtered: [],        // 当前筛选后的图片
   tagStats: [],        // [{tag,count,freq}]
   commonTags: [],
+  commonDiscard: [],   // 共同标签丢弃区（共同标签 ✕ 删除后存放，可放回）
   activeTag: null,     // 当前筛选的标签
   selected: new Set(), // 选中图片路径
   selBeforeAll: null,  // 全选前的选择状态（取消全选时恢复）
@@ -808,10 +817,10 @@ function undo() {
   if (!op) { setMsg("无可撤销操作"); return; }
   // 撤销前把当前状态压入重做栈
   if (op.type === "mem") {
-    // 当前状态（含丢弃区）压入重做栈——S2 修复：mem 快照带 disc，撤销同时恢复丢弃区
+    // 当前状态（含丢弃区 + 共同丢弃区）压入重做栈——S2 修复：mem 快照带 disc，撤销同时恢复丢弃区
     const cur = state.images.filter(img => op.data.images.some(o => o.path === img.path))
       .map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}));
-    state.redoStack.push({type: "mem", data: {images: cur}});
+    state.redoStack.push({type: "mem", data: {images: cur, commonDiscard: op.data.commonDiscard ? [...state.commonDiscard] : undefined}});
     // 恢复内存标签 + 丢弃区（对称还原，避免标签重复/消失）
     op.data.images.forEach(o => {
       const img = state.images.find(i => i.path === o.path);
@@ -820,7 +829,9 @@ function undo() {
         state.discardMap[img.path] = [...(o.disc || [])];
       }
     });
+    if (op.data.commonDiscard) state.commonDiscard = [...op.data.commonDiscard];
     rescanStats();
+    renderCommonDiscard();
     renderGrid();
     renderEditor();
     setMsg(`已撤销 ${op.data.images.length} 张图片的标签修改（未保存）`);
@@ -855,7 +866,7 @@ function redo() {
   if (op.type === "mem") {
     const cur = state.images.filter(img => op.data.images.some(o => o.path === img.path))
       .map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}));
-    state.undoStack.push({type: "mem", data: {images: cur}});
+    state.undoStack.push({type: "mem", data: {images: cur, commonDiscard: op.data.commonDiscard ? [...state.commonDiscard] : undefined}});
     op.data.images.forEach(o => {
       const img = state.images.find(i => i.path === o.path);
       if (img) {
@@ -863,7 +874,9 @@ function redo() {
         state.discardMap[img.path] = [...(o.disc || [])];
       }
     });
+    if (op.data.commonDiscard) state.commonDiscard = [...op.data.commonDiscard];
     rescanStats();
+    renderCommonDiscard();
     renderGrid();
     renderEditor();
     setMsg(`已重做 ${op.data.images.length} 张图片的标签修改（未保存）`);
@@ -900,7 +913,13 @@ function updateUndoButtons() {
 }
 
 // ---------- 工具 ----------
+// 域名分片：翻译请求走 127.0.0.1（与 localhost 是浏览器独立的连接池，各 6 连接）——
+// 5 并发翻译占满 127.0.0.1 池时，UI 请求（设置/图片）仍在 localhost 池畅通
+const TRANS_BASE = "http://127.0.0.1:" + (location.port || "8765");
 function api(path, opts) {
+  opts = opts || {};
+  // 默认高优先级（UI 请求优先于翻译等低优请求，不被连接池阻塞）；调用方可传 priority 覆盖
+  if (!opts.priority) opts = Object.assign({}, opts, {priority: "high"});
   return fetch(path, opts).then(r => r.json().catch(() => ({error: "响应解析失败"})));
 }
 function enc(p) { return encodeURIComponent(p); }
@@ -1113,8 +1132,56 @@ function updateZhStats() {
 function renderCommonTags() {
   const el = document.getElementById("commonTags");
   if (!state.commonTags.length) { el.innerHTML = ""; return; }
-  // 共同标签 chip 带 ✕：点击删除（从所有图片移除，进丢弃区可放回）
-  el.innerHTML = state.commonTags.map(t => chipHTML(t, 'title="点击筛选，✕ 从所有图片删除"', true)).join("");
+  // 共同标签 chip 带 ✕：点击删除（进入共同标签丢弃区，可放回）
+  el.innerHTML = state.commonTags.map(t => chipHTML(t, 'title="点击筛选，✕ 移入共同丢弃区"', true)).join("");
+}
+
+// ---------- 共同标签丢弃区（共同标签删除后单独存放，可放回所有图片） ----------
+function renderCommonDiscard() {
+  const wrap = document.getElementById("commonDiscardWrap");
+  const el = document.getElementById("commonDiscard");
+  if (!state.commonDiscard.length) { wrap.style.display = "none"; return; }
+  wrap.style.display = "block";
+  el.innerHTML = state.commonDiscard.map(t => chipHTML(t, 'title="点击放回所有图片，✕ 彻底移除"', true)).join("");
+}
+// 共同标签 ✕：从所有图片移除 → 进共同丢弃区（可放回）
+function deleteCommonTag(tag) {
+  const all = state.images;
+  if (!all.length) return;
+  pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]})), commonDiscard: [...state.commonDiscard]});
+  all.forEach(img => { if (img.tags.includes(tag)) img.tags = img.tags.filter(x => x !== tag); });
+  if (!state.commonDiscard.includes(tag)) state.commonDiscard.push(tag);
+  rescanStats(); renderCommonTags(); renderCommonDiscard(); renderAllTags(); renderGrid(); renderEditor();
+  setMsg(`共同标签 ${tag} 已移入共同丢弃区（点击可放回）`);
+}
+// 点击丢弃区 chip：放回所有图片
+function restoreCommonTag(tag) {
+  const all = state.images;
+  if (!all.length) return;
+  pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]})), commonDiscard: [...state.commonDiscard]});
+  state.commonDiscard = state.commonDiscard.filter(x => x !== tag);
+  all.forEach(img => { if (!img.tags.includes(tag)) img.tags.push(tag); });
+  rescanStats(); renderCommonTags(); renderCommonDiscard(); renderAllTags(); renderGrid(); renderEditor();
+  setMsg(`共同标签 ${tag} 已放回所有图片`);
+}
+// 全部放回
+function restoreAllCommon() {
+  const all = state.images;
+  if (!state.commonDiscard.length || !all.length) return;
+  pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]})), commonDiscard: [...state.commonDiscard]});
+  const tags = [...state.commonDiscard];
+  state.commonDiscard = [];
+  all.forEach(img => { tags.forEach(t => { if (!img.tags.includes(t)) img.tags.push(t); }); });
+  rescanStats(); renderCommonTags(); renderCommonDiscard(); renderAllTags(); renderGrid(); renderEditor();
+  setMsg(`已放回 ${tags.length} 个共同标签`);
+}
+// 丢弃区 chip ✕：彻底移除（不可再放回，可撤销）
+function removeCommonDiscard(tag) {
+  const all = state.images;
+  pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]})), commonDiscard: [...state.commonDiscard]});
+  state.commonDiscard = state.commonDiscard.filter(x => x !== tag);
+  renderCommonDiscard();
+  setMsg(`已彻底移除共同标签 ${tag}（可撤销）`);
 }
 
 function renderAllTags() {
@@ -1824,21 +1891,72 @@ function getLlmUserPrompt() {
 
 // ---------- LLM 翻译 ----------
 // 翻译指定标签集合（去重未翻译的；共享请求与回填逻辑）
+let _translateAllLockUntil = 0;  // 翻译全部 3 分钟防重复（窗口内点击回到上次翻译日志，不重新翻译）
+let _lastTranslateLog = "";     // 最近一次翻译的日志（进度/结果，供重复点击时回显）
+
+// ---------- LLM 翻译 ----------
+// 翻译指定标签集合（去重未翻译的；共享请求与回填逻辑）
 function doTranslate(tags, doneMsg) {
   const unknown = tags.filter(t => !state.zhMap[t] || state.zhMap[t] === t);
   if (!unknown.length) { setMsg(doneMsg || "所有标签都已有翻译"); return; }
-  setMsg(`翻译中... ${unknown.length} 个标签`);
-  // 注意：LLM 用户提示词只对初筛生效，翻译不带（用户明确要求）
-  api("/api/translate/llm", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tags: unknown.slice(0, 500)}) }).then(r => {
-    if (r.error) { setMsg("" + r.error); return; }
-    Object.entries(r.translated || {}).forEach(([k, v]) => { state.zhMap[k] = v; });
-    updateZhStats();
-    renderAllTags(); renderCommonTags(); renderGrid();
-    setMsg(`翻译完成：新增 ${Object.keys(r.translated||{}).length} 条（已缓存）`);
-  });
+  const startMsg = `翻译中... 共 ${unknown.length} 个标签`;
+  setMsg(startMsg);  // 点击立即反馈（不等第一批返回）
+  _lastTranslateLog = startMsg;  // 记录起始日志
+  // 翻译并发（设置可调，所有翻译入口共用）：每批 50 标签，滑动窗口并行，先翻译完的批次立即更新界面
+  const BATCH = 50;    // 每次 50 标签
+  const CONC = Math.min(8, Math.max(1, state.translateConcurrency || 5));  // 并发数（读设置，默认 5）
+  const batches = [];
+  for (let i = 0; i < unknown.length; i += BATCH) batches.push(unknown.slice(i, i + BATCH));
+  let done = 0, total = 0, next = 0;
+  const maybeFinish = () => {
+    if (done >= batches.length) {
+      updateZhStats();
+      renderAllTags(); renderCommonTags(); renderGrid();
+      const finMsg = `翻译完成：新增 ${total} 条（已缓存）`;
+      setMsg(finMsg);
+      _lastTranslateLog = finMsg;  // 记录日志（3 分钟内重复点击回显）
+    }
+  };
+  const worker = () => {
+    if (next >= batches.length) { maybeFinish(); return; }
+    const b = batches[next++];
+    // 注意：LLM 用户提示词只对初筛生效，翻译不带（用户明确要求）
+    // 走 127.0.0.1 独立连接池（域名分片）：翻译占满自己的池，不阻塞 UI 请求（双击看图/设置）
+    api(TRANS_BASE + "/api/translate/llm", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tags: b}), priority: "low" }).then(r => {
+      if (r.error) {
+        const errMsg = "" + r.error;
+        setMsg(errMsg);
+        _lastTranslateLog = errMsg;
+        done++; worker(); return;
+      }
+      const tr = r.translated || {};
+      Object.entries(tr).forEach(([k, v]) => { state.zhMap[k] = v; });  // zhMap 内存实时更新（编辑条/切图立即可见）
+      total += Object.keys(tr).length;
+      done++;
+      // 翻译期间不渲染标签列表（避免频繁全量渲染卡顿）；只更新状态栏计数
+      const progMsg = `翻译中... ${done}/${batches.length} 批完成（已更新 ${total} 条）`;
+      setMsg(progMsg);
+      _lastTranslateLog = progMsg;  // 记录进度日志
+      maybeFinish();
+      worker();
+    }).catch(e => {
+      const errMsg = "翻译请求失败: " + e.message;
+      setMsg(errMsg);
+      _lastTranslateLog = errMsg;
+    });
+  };
+  for (let i = 0; i < Math.min(CONC, batches.length); i++) worker();
 }
-// 翻译全部未翻译标签（右键菜单"翻译全部"）
+// 翻译全部未翻译标签（右键菜单"翻译全部" + 侧栏翻译按钮）——
+// 3 分钟内重复点击不重新翻译，状态栏回到上一条翻译日志
 function translateMissing() {
+  const now = Date.now();
+  if (now < _translateAllLockUntil) {
+    setMsg(_lastTranslateLog || "翻译进行中，请稍候...");
+    return;
+  }
+  _translateAllLockUntil = now + 3 * 60 * 1000;  // 3 分钟窗口
+  _lastTranslateLog = "";
   doTranslate(state.tagStats.map(t => t.tag));
 }
 // 翻译当前选中图片的标签（单击默认：编辑条显示的标签，单图=该图，多图=并集）
@@ -1942,6 +2060,7 @@ function openViewer(path) {
   const img = document.getElementById("viewerImg");
   v.style.display = "block";
   viewerState.scale = 1; viewerState.ox = 0; viewerState.oy = 0; viewerState.drag = null;
+  img.fetchPriority = "high";  // 查看器原图高优先级：翻译进行中也能立即加载
   img.src = "/api/image?path=" + encodeURIComponent(path);
   img.onload = () => {
     // 打开时 fit 适配：大图缩到视口内居中（照片查看器行为）
@@ -2140,7 +2259,6 @@ function openSettings() {
         <div class="form-row"><label>全部保存并发数（默认 100）</label><input id="saveConc" type="number" min="1" max="500" step="1" value="${cfg.save_concurrency||100}" /></div>
         <h4 style="margin:16px 0 10px;">翻译</h4>
         <div class="form-row"><label>翻译并发数（1-8，默认 3）</label><input id="trConc" type="number" min="1" max="8" step="1" value="${cfg.translate_concurrency||3}" /></div>
-        <div class="form-hint">词库/离线词典已封装在项目 taglib/ 目录内（不依赖外部插件）<br>标签库: ${cfg.taglib_path||"未找到"}<br>离线词典: ${cfg.dict_path||"未找到"}</div>
       </div>
       <div class="modal-foot"><span style="font-size:12px;color:var(--text-sub);margin-right:auto;">修改即自动保存</span><button class="btn primary" onclick="closeModal()">完成</button></div>`;
     openModal(html);
@@ -2201,6 +2319,7 @@ function saveSettings() {
     if (r.ok) {
       state.previewSize = body.preview_size;
       state.saveConcurrency = body.save_concurrency;
+      state.translateConcurrency = body.translate_concurrency;  // 翻译并发即时生效（所有翻译入口）
       applyFontSize(body.font_size);  // 字号即时生效
       setMsg("设置已自动缓存" + (state.previewSize ? `（缩略图 ${state.previewSize}px）` : "（原图模式）") + `，全部保存并发 ${state.saveConcurrency}`);
       renderGrid(); // 立即用新缩略图尺寸重绘
@@ -2316,16 +2435,25 @@ function bindDelegates() {
         const row = e.target.closest(".tag-row");
         if (row && row.dataset.tag) setFilter(row.dataset.tag);
       });
-  // 共同标签 chip：点击筛选
+  // 共同标签 chip：点击筛选；✕ 移入共同丢弃区
   document.getElementById("commonTags").addEventListener("click", e => {
-    // ✕：从所有图片删除该共同标签（进丢弃区可放回）
     const del = e.target.closest(".del");
     if (del) {
       const c = del.closest(".chip");
-      if (c && c.dataset.tag) { deleteTagFromAll(c.dataset.tag); return; }
+      if (c && c.dataset.tag) { deleteCommonTag(c.dataset.tag); return; }
     }
     const c = e.target.closest(".chip");
     if (c && c.dataset.tag) setFilter(c.dataset.tag);
+  });
+  // 共同标签丢弃区：chip 点击放回所有图片；✕ 彻底移除
+  document.getElementById("commonDiscard").addEventListener("click", e => {
+    const del = e.target.closest(".del");
+    if (del) {
+      const c = del.closest(".chip");
+      if (c && c.dataset.tag) { removeCommonDiscard(c.dataset.tag); return; }
+    }
+    const c = e.target.closest(".chip");
+    if (c && c.dataset.tag) restoreCommonTag(c.dataset.tag);
   });
   // 编辑条标签 chip：点击 ✕ 移除（点击 chip 本体不再删除，仅拖拽排序）
   document.getElementById("editorTags").addEventListener("click", e => {
@@ -2495,6 +2623,7 @@ function setMsg(m) { document.getElementById("stMsg").textContent = m; }
     else state.previewSize = 0;
     applyFontSize(cfg.font_size);  // 界面字号档位
     if (cfg.save_concurrency) state.saveConcurrency = cfg.save_concurrency;
+    if (cfg.translate_concurrency) state.translateConcurrency = cfg.translate_concurrency;  // 翻译并发（所有翻译入口共用）
   });
 })();
 
