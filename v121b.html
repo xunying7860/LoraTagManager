@@ -656,7 +656,7 @@ footer#statusBar {
 <body>
 <!-- 原图查看器（放 body 开头：先于 script 解析，保证 init 绑定时元素存在） -->
 <div id="viewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:1000;cursor:grab;overflow:hidden;user-select:none;">
-  <img id="viewerImg" style="position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;max-height:none;" draggable="false" />
+  <img id="viewerImg" style="position:absolute;left:0;top:0;transform-origin:50% 50%;max-width:none;max-height:none;" draggable="false" />
   <div style="position:absolute;top:12px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.65);font-size:12.5px;pointer-events:none;">滚轮缩放 · 左键拖动查看细节 · 双击或 Esc 关闭</div>
 </div>
 
@@ -690,10 +690,6 @@ footer#statusBar {
         <input id="tagSearch" placeholder="搜索标签..." oninput="renderAllTags()" style="flex:1;min-width:0;" />
         <button class="btn" style="padding:3px 10px;font-size:11px;white-space:nowrap;" onclick="translateMissing()" title="一键翻译全部未翻译标签">翻译</button>
         <button class="btn" id="batchDelBtn" style="padding:3px 10px;font-size:11px;white-space:nowrap;" onclick="toggleBatchDelete()" title="批量选择标签并删除（从所有图片移除，可撤销）">批量删除</button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
-        <input id="batchAddInput" placeholder="批量添加标签到全部图片..." style="flex:1;min-width:0;" onkeydown="if(event.key==='Enter')batchAddTag()" />
-        <button class="btn" style="padding:3px 10px;font-size:11px;white-space:nowrap;" onclick="batchAddTag()" title="为全部图片添加同一标签（词库优先匹配，可撤销）">批量添加</button>
       </div>
     </div>
     <div id="allTags"></div>
@@ -1113,8 +1109,7 @@ function updateZhStats() {
 function renderCommonTags() {
   const el = document.getElementById("commonTags");
   if (!state.commonTags.length) { el.innerHTML = ""; return; }
-  // 共同标签 chip 带 ✕：点击删除（从所有图片移除，进丢弃区可放回）
-  el.innerHTML = state.commonTags.map(t => chipHTML(t, 'title="点击筛选，✕ 从所有图片删除"', true)).join("");
+  el.innerHTML = state.commonTags.map(t => chipHTML(t)).join("");
 }
 
 function renderAllTags() {
@@ -1134,29 +1129,6 @@ function renderAllTags() {
       ${state.batchMode ? "" : `<span class="del-x" data-dtag="${t.tag.replace(/"/g,'&quot;')}" title="从所有图片删除此标签（移入丢弃区，可放回）">✕</span>`}
     </div>`;
   }).join("") || `<div style="padding:10px;color:var(--text-sub);">无匹配标签</div>`;
-}
-
-// ---------- 侧栏批量添加（全部图片添加同一标签） ----------
-function batchAddTag() {
-  const inp = document.getElementById("batchAddInput");
-  const raw = inp.value.trim();
-  if (!raw) { setMsg("请输入要批量添加的标签"); return; }
-  inp.value = "";
-  const all = state.images;
-  if (!all.length) { setMsg("没有图片"); return; }
-  // 词库优先匹配（与输入框一致：英文忽略下划线 / 中文匹配翻译）；未命中原样添加
-  const hit = matchLibTag(raw);
-  const tag = hit ? hit.en : raw;
-  pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
-  let added = 0;
-  all.forEach(img => {
-    if (!img.tags.includes(tag)) { img.tags.push(tag); added++; }
-  });
-  if (hit && hit.zh) state.zhMap[tag] = hit.zh;
-  rescanStats();
-  renderGrid();
-  renderAllTags();
-  setMsg(`已为 ${added}/${all.length} 张图片添加标签 ${tag}（未保存，可撤销）`);
 }
 
 // ---------- 侧栏标签批量删除 ----------
@@ -1206,7 +1178,6 @@ function batchDeleteSelected() {
     });
   });
   rescanStats();
-  renderCommonTags();
   renderAllTags();
   renderGrid();
   renderEditor();
@@ -1229,7 +1200,6 @@ function deleteTagFromAll(tag) {
     }
   });
   rescanStats();
-  renderCommonTags();
   renderAllTags();
   renderGrid();
   renderEditor();
@@ -1934,7 +1904,7 @@ function screenCommonTags(sel, commonTags) {
   runBatch(0);
 }
 
-// ---------- 原图查看器（复刻 Win11 照片查看器：打开 fit 适配、滚轮以鼠标为锚平滑缩放、左键 1:1 拖动） ----------
+// ---------- 原图查看器（双击图片打开；滚轮缩放围绕鼠标；左键拖动平移） ----------
 const viewerState = {scale: 1, ox: 0, oy: 0, drag: null};
 
 function openViewer(path) {
@@ -1944,25 +1914,19 @@ function openViewer(path) {
   viewerState.scale = 1; viewerState.ox = 0; viewerState.oy = 0; viewerState.drag = null;
   img.src = "/api/image?path=" + encodeURIComponent(path);
   img.onload = () => {
-    // 打开时 fit 适配：大图缩到视口内居中（照片查看器行为）
-    const vw = v.clientWidth, vh = v.clientHeight;
-    const iw = img.naturalWidth, ih = img.naturalHeight;
-    const fit = Math.min(1, vw / iw, vh / ih);
-    viewerState.scale = fit;
-    viewerState.ox = (vw - iw * fit) / 2;
-    viewerState.oy = (vh - ih * fit) / 2;
-    applyViewer(false);
+    // 初始居中（基于原图尺寸）
+    viewerState.ox = (v.clientWidth - img.naturalWidth) / 2;
+    viewerState.oy = (v.clientHeight - img.naturalHeight) / 2;
+    applyViewer();
   };
-  applyViewer(false);
+  applyViewer();
 }
 function closeViewer() {
   document.getElementById("viewer").style.display = "none";
 }
-function applyViewer(animate) {
+function applyViewer() {
   const img = document.getElementById("viewerImg");
-  // 缩放用平滑过渡（照片查看器手感）；拖动平移即时（不拖尾）
-  img.style.transition = animate ? "transform .12s ease-out" : "none";
-  // translate 后应用（右→左）：平移量不被缩放放大（1:1 拖动 + 缩放公式基于左上角原点）
+  // transform 顺序：translate 在 scale 之后应用（右→左）——平移量不随缩放放大，拖动 1:1（修复"图片滑过鼠标"）
   img.style.transform = `translate(${viewerState.ox}px, ${viewerState.oy}px) scale(${viewerState.scale})`;
 }
 // 滚轮缩放（围绕鼠标位置）——绑定移至 bindDelegates（DOM 就绪后）
@@ -2270,18 +2234,20 @@ function bindDelegates() {
     const card = e.target.closest(".card");
     if (card && card.dataset.path) openViewer(card.dataset.path);
   });
-  // 原图查看器交互：滚轮缩放（照片查看器逻辑：以鼠标位置为锚，缩放平滑、内容跟手不跑偏）、左键拖动、双击关闭
+  // 原图查看器交互：滚轮缩放（以图片中心为基准，不跟随鼠标位置）、左键拖动平移、双击关闭（DOM 就绪后绑定）
   document.getElementById("viewer").addEventListener("wheel", e => {
     e.preventDefault();
-    const v = document.getElementById("viewer");
-    const r = v.getBoundingClientRect();
-    const mx = e.clientX - r.left, my = e.clientY - r.top;
-    const ns = Math.min(8, Math.max(0.05, viewerState.scale * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
-    // zoom-to-cursor：保持鼠标下的图像点不动（照片查看器标准行为）
-    viewerState.ox = mx - (mx - viewerState.ox) * (ns / viewerState.scale);
-    viewerState.oy = my - (my - viewerState.oy) * (ns / viewerState.scale);
+    // 只改缩放倍率：transform-origin 50% 50%，图片始终以自身中心为缩放中点
+    const ns = Math.min(8, Math.max(0.2, viewerState.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
     viewerState.scale = ns;
-    applyViewer(true);  // 平滑过渡
+    // 缩小回 1x 及以下：图片自动回到屏幕中央（复位拖动偏移）
+    if (ns <= 1) {
+      const v = document.getElementById("viewer");
+      const img = document.getElementById("viewerImg");
+      viewerState.ox = (v.clientWidth - (img.naturalWidth || 0)) / 2;
+      viewerState.oy = (v.clientHeight - (img.naturalHeight || 0)) / 2;
+    }
+    applyViewer();
   }, {passive: false});
   document.getElementById("viewer").addEventListener("mousedown", e => {
     if (e.target.tagName !== "IMG") return;
@@ -2293,7 +2259,7 @@ function bindDelegates() {
     if (!viewerState.drag) return;
     viewerState.ox = viewerState.drag.ox + (e.clientX - viewerState.drag.x);
     viewerState.oy = viewerState.drag.oy + (e.clientY - viewerState.drag.y);
-    applyViewer(false);  // 拖动即时跟手，无过渡
+    applyViewer();
   });
   window.addEventListener("mouseup", () => {
     if (viewerState.drag) {
@@ -2318,12 +2284,6 @@ function bindDelegates() {
       });
   // 共同标签 chip：点击筛选
   document.getElementById("commonTags").addEventListener("click", e => {
-    // ✕：从所有图片删除该共同标签（进丢弃区可放回）
-    const del = e.target.closest(".del");
-    if (del) {
-      const c = del.closest(".chip");
-      if (c && c.dataset.tag) { deleteTagFromAll(c.dataset.tag); return; }
-    }
     const c = e.target.closest(".chip");
     if (c && c.dataset.tag) setFilter(c.dataset.tag);
   });
