@@ -628,14 +628,17 @@ def get_thumb_bytes(path, size):
                 pass
 
 
-def _prewarm_thumbs(paths):
-    """扫描完成后后台预热缩略图（按当前 preview_size；0=原图模式则跳过）"""
+def _prewarm_thumbs(paths, limit=500):
+    """扫描完成后后台预热缩略图（按当前 preview_size；0=原图模式则跳过）
+    限量预热前 limit 张（约 80 行网格，够用户滚动好几分钟）：
+    全量预热 7000 图会抢磁盘/CPU，拖慢紧随其后的二次扫描；其余按需生成（2~16ms/张，永久缓存）"""
     if not paths:
         return
     cfg = load_config()
     size = int(cfg.get("preview_size", 0) or 0)
     if size <= 0:
         return
+    paths = paths[:limit]
 
     def run():
         with ThreadPoolExecutor(max_workers=4) as ex:

@@ -25,3 +25,4 @@ index.db-wal
 index.db-shm
 ui_chars_ascii.txt
 ui_chars_cjk.txt
+dist2/
