@@ -48,4 +48,8 @@ pyinstaller LoraTagManager.spec --noconfirm
 
 产物在 `dist/LoraTagManager/`（onedir）。词库改动后重跑 `tools/prebuild_taglib.py`（yaml→json 预编译）；字体改动后重跑 `tools/gen_font_chars.py` + pyftsubset。
 
+## License
+
+MIT
+
 
