@@ -497,7 +497,7 @@ def _run_scan(scan_id, folder):
                     pass
             key = known.get(full)
             if key is not None and key[0] == tm and key[1] == ts:
-                # 增量命中：txt 未变（或从无 txt），复用缓存标签
+                # 增量命中：txt 未变（或从无 txt），复用缓存标签；已入库无需回写
                 tags = json.loads(key[2]) if key[2] else []
                 has_txt = bool(key[3]) and txt is not None
             else:
@@ -507,7 +507,9 @@ def _run_scan(scan_id, folder):
                 total_txt += 1
             for t in tags:
                 tag_counter[t] += 1
-            rows.append((full, folder, tm, ts, json.dumps(tags, ensure_ascii=False), 1 if has_txt else 0))
+            # 只有未命中（新增/变更）才回写索引：纯增量扫描免全量 upsert（7000 图数据集省 ~1s）
+            if key is None or key[0] != tm or key[1] != ts:
+                rows.append((full, folder, tm, ts, json.dumps(tags, ensure_ascii=False), 1 if has_txt else 0))
             images.append({
                 "name": os.path.basename(full),
                 "path": full,
