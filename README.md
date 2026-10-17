@@ -48,6 +48,4 @@ pyinstaller LoraTagManager.spec --noconfirm
 
 产物在 `dist/LoraTagManager/`（onedir）。词库改动后重跑 `tools/prebuild_taglib.py`（yaml→json 预编译）；字体改动后重跑 `tools/gen_font_chars.py` + pyftsubset。
 
-## 本地数据
 
-`config.json`（含 API Key 密文）、`cache.json`、`backups/`、`thumbs/`、`index.db` 为本地数据，不入库。
