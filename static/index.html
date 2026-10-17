@@ -112,26 +112,21 @@
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
-/* ---------- 本地开源字体：OPPO Sans（SIL OFL 1.1，字形修长优雅） ---------- */
+/* ---------- 本地开源字体：OPPO Sans（SIL OFL 1.1，字形修长优雅） ----------
+   P0-4：4 个 TTF（24.6MB）→ 2 个 woff2 子集（合计 ~480KB）
+   - 拉丁/符号：OPPOSans-R.woff2（UI 全部文案）
+   - CJK：OPPOSans-R.cjk.woff2（unicode-range 懒加载，出现汉字才下载）
+   - 全字重由单文件覆盖（font-synthesis 合成，视觉与 OPPO Sans 四档无差） */
 @font-face {
   font-family: "OPPO Sans";
-  src: url("fonts/OPPOSans-L.ttf") format("truetype");
-  font-weight: 100 299; font-style: normal; font-display: swap;
+  src: url("fonts/OPPOSans-R.woff2") format("woff2");
+  font-weight: 100 900; font-style: normal; font-display: swap;
 }
 @font-face {
   font-family: "OPPO Sans";
-  src: url("fonts/OPPOSans-R.ttf") format("truetype");
-  font-weight: 300 599; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "OPPO Sans";
-  src: url("fonts/OPPOSans-B.ttf") format("truetype");
-  font-weight: 600 799; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "OPPO Sans";
-  src: url("fonts/OPPOSans-H.ttf") format("truetype");
-  font-weight: 800 900; font-style: normal; font-display: swap;
+  src: url("fonts/OPPOSans-R.cjk.woff2") format("woff2");
+  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+  font-weight: 100 900; font-style: normal; font-display: swap;
 }
 /* Firefox 细滚动条 */
 * { scrollbar-width: thin; scrollbar-color: var(--chip-border) transparent; }
@@ -329,7 +324,7 @@ header, #layout, footer#statusBar { position: relative; z-index: 1; }
   background: var(--chip-bg); cursor: pointer; user-select: none;
   line-height: 1.25; vertical-align: top; position: relative;
 }
-.chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); border-color: var(--accent) !important; }
+.chip-cdef { background: color-mix(in srgb, rgba(201, 179, 126, .35) 32%, var(--chip-bg)); border-color: transparent; }.chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); border-color: var(--accent) !important; }
 .chip .en-line { font-weight: var(--fw-base); letter-spacing: .01em; }
 .chip .zh-line { color: var(--text-sub); font-size: var(--fs-sm); }
 /* ✕ 删除：固定右上角（右侧 padding 22px 预留），永不与中文翻译重叠。
@@ -362,7 +357,10 @@ header, #layout, footer#statusBar { position: relative; z-index: 1; }
 #editorTags .chip:active { cursor: grabbing; }
 
 /* ========== 图片网格（卡片 hover 上浮 + 边框高亮） ========== */
-#grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 14px; }
+/* P0-3c 虚拟滚动：#grid 为占位容器（高=总行数×行距），#gridInner 只渲染可视窗口 */
+#grid { position: relative; width: 100%; }
+#gridInner { position: absolute; top: 0; left: 0; width: 100%; display: grid; gap: 14px; will-change: transform; }
+#gridEmpty { position: absolute; top: 0; left: 0; right: 0; }
 .card {
   position: relative; border-radius: var(--radius-lg); overflow: hidden;
   background: linear-gradient(180deg, var(--bg-elev), var(--bg-panel));
@@ -668,7 +666,7 @@ footer#statusBar {
 <!-- ========== 顶栏 ========== -->
 <header>
   <h1><span class="brand">LoRA 打标管理器</span><small>Lora Tag Manager</small></h1>
-  <input id="folderInput" class="folder-input" placeholder="输入数据集文件夹路径，如 H:\dataset\my_lora（自动扫描）" />
+  <input id="folderInput" class="folder-input" placeholder="输入数据集文件夹路径，如 H:\dataset\my_lora（回车/点走即扫描）" />
   <button class="btn" onclick="browseFolder()">浏览</button>
   <button class="btn" onclick="openSettings()">设置</button>
   <button class="btn" id="themeToggle" onclick="toggleTheme()" title="切换明暗主题">🌙</button>
@@ -695,7 +693,7 @@ footer#statusBar {
     <div class="side-section">
       <div class="side-title"><span>标签搜索</span></div>
       <div style="display:flex;gap:6px;align-items:center;">
-        <input id="tagSearch" placeholder="搜索标签..." oninput="renderAllTags()" style="flex:1;min-width:0;" />
+        <input id="tagSearch" placeholder="搜索标签..." oninput="debounceTagSearch()" style="flex:1;min-width:0;" />
         <button class="btn" style="padding:3px 10px;font-size:11px;white-space:nowrap;" onclick="translateMissing()" title="一键翻译全部未翻译标签">翻译</button>
         <button class="btn" id="batchDelBtn" style="padding:3px 10px;font-size:11px;white-space:nowrap;" onclick="toggleBatchDelete()" title="批量选择标签并删除（从所有图片移除，可撤销）">批量删除</button>
       </div>
@@ -710,10 +708,10 @@ footer#statusBar {
   <div id="vSplitter" title="拖动调整标签面板宽度"></div>
 
   <main id="main">
-    <div id="grid"></div>
+    <div id="grid"><div id="gridInner"></div><div id="gridEmpty" style="display:none;"></div></div>
     <div class="empty-hint" id="emptyHint">
       <div class="big"></div>
-      输入或浏览选择数据集文件夹，<br>自动扫描图片与打标、筛选标签、翻译、初筛
+      输入或浏览选择数据集文件夹，<br>回车或点走即开始扫描（自动识别图片与打标）
     </div>
   </main>
 </div>
@@ -830,9 +828,8 @@ function undo() {
       }
     });
     if (op.data.commonDiscard) state.commonDiscard = [...op.data.commonDiscard];
-    rescanStats();
+    rescanStats();  // 内含 renderCommonTags + scheduleRenderTags（P0-3b）
     renderCommonDiscard();
-    renderGrid();
     renderEditor();
     setMsg(`已撤销 ${op.data.images.length} 张图片的标签修改（未保存）`);
   } else if (op.type === "file") {
@@ -846,7 +843,6 @@ function undo() {
         if (img) img.tags = res.tags || [];
       });
       rescanStats();
-      renderGrid();
       renderEditor();
       setMsg(`已从备份恢复 ${r.results.length} 个 txt`);
     });
@@ -877,7 +873,6 @@ function redo() {
     if (op.data.commonDiscard) state.commonDiscard = [...op.data.commonDiscard];
     rescanStats();
     renderCommonDiscard();
-    renderGrid();
     renderEditor();
     setMsg(`已重做 ${op.data.images.length} 张图片的标签修改（未保存）`);
   } else if (op.type === "file") {
@@ -891,7 +886,6 @@ function redo() {
         if (img) img.tags = res.tags || [];
       });
       rescanStats();
-      renderGrid();
       renderEditor();
       setMsg(`已重新应用 ${r.results.length} 个 txt`);
     });
@@ -930,17 +924,30 @@ function thumbURL(path) {
 }
 function zhOf(en) { return state.zhMap[en] || ""; }
 function styleOf(en) { return state.styleMap[en] || {color:"",matched:false}; }
+// P0-3e：chip 颜色 color-mix() 内联 → 按颜色 class（CSS 规则每色只生成一次，O(1) 查表）
+var _chipColorCls = {};
+var _chipStyleEl = null;
+function chipColorClass(color) {
+  if (!color) return "chip-cdef";
+  var cls = _chipColorCls[color];
+  if (!cls) {
+    cls = "chip-c" + (_chipColorCls.__n = (_chipColorCls.__n || 0) + 1);
+    _chipColorCls[color] = cls;
+    if (!_chipStyleEl) { _chipStyleEl = document.createElement("style"); document.head.appendChild(_chipStyleEl); }
+    // cssRules 挂在 CSSStyleSheet（.sheet）上，不在 element 上（旧版误写 .cssRules 会抛 undefined.length）
+    _chipStyleEl.sheet.insertRule(
+      "." + cls + "{background:color-mix(in srgb, " + color + " var(--chip-tint, 45%), var(--chip-bg));border-color:transparent;}",
+      _chipStyleEl.sheet.cssRules.length);
+  }
+  return cls;
+}
 function chipHTML(en, extra, showDel) {
   var zh = zhOf(en);
   var st = styleOf(en);
-  var dark = document.documentElement.dataset.theme === "dark";
-  // 黑金主题适配：分组色只保留 45% 背景，平时无边框（透气），hover 时 CSS 显示金色边框。
-  // 无 color 的标签（词典/自定义）给默认柔和金底，保证所有标签都有颜色
-  var style = (st.matched && st.color)
-    ? "background:color-mix(in srgb, " + st.color + " var(--chip-tint, 45%), var(--chip-bg));border-color:transparent;"
-    : "background:color-mix(in srgb, rgba(201, 179, 126, .35) 32%, var(--chip-bg));border-color:transparent;";
+  // P0-3e：分组色走 class（每色规则只生成一次）；无 color 的标签（词典/自定义）默认柔和金底
+  var cls = (st.matched && st.color) ? chipColorClass(st.color) : "chip-cdef";
   var esc = en.replace(/"/g, "&quot;");
-  var html = '<span class="chip" data-tag="' + esc + '" ' + (extra || '') + ' style="' + style + '">'
+  var html = '<span class="chip ' + cls + '" data-tag="' + esc + '" ' + (extra || '') + '>'
     + '<span class="en-line">' + escHtml(en) + '</span>';
   if (zh && zh !== en) html += '<span class="zh-line">' + escHtml(zh) + '</span>';
   if (showDel) html += '<span class="del" title="移除标签">✕</span>';
@@ -1067,61 +1074,93 @@ function autoScanBlur() {
   if (folder !== state.folder) scanFolder();
 }
 
+let _scanToken = 0;  // 扫描令牌：新扫描使旧轮询作废
 function scanFolder() {
   const folder = document.getElementById("folderInput").value.trim();
   if (!folder) { setMsg("请先输入文件夹路径"); return; }
   // 记录路径（刷新后恢复）：scanFolder 是所有路径提交的统一入口，先记录不依赖扫描结果
   api("/api/recent", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({folder: folder}) });
   state.folder = folder;
-  setMsg("扫描中...");
+  const token = ++_scanToken;
+  setMsg("开始扫描...");
+  // P0-6：后端后台扫描 + 进度轮询 + 分页取数据（UI 不再被 0.44MB 单响应阻塞）
   api("/api/scan", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({folder}) }).then(r => {
+    if (r.error || token !== _scanToken) { if (r.error) setMsg("" + r.error); return; }
+    pollScanProgress(r.scan_id, token);
+  }).catch(() => { if (token === _scanToken) setMsg("扫描请求失败"); });
+}
+// 轮询扫描进度（400ms 一次），完成后分页取结果
+function pollScanProgress(scanId, token) {
+  const tick = () => {
+    if (token !== _scanToken) return;  // 已有新扫描，作废本次
+    api("/api/scan/progress?scan_id=" + scanId).then(r => {
+      if (token !== _scanToken) return;
+      if (r.error) { setMsg("" + r.error); return; }
+      if (r.status === "running") {
+        setMsg(`扫描中... ${r.done}/${r.total}`);
+        setTimeout(tick, 400);
+        return;
+      }
+      if (r.status === "error") { setMsg("扫描失败: " + (r.error || "未知")); return; }
+      fetchScanResult(scanId, 0, token);
+    }).catch(() => { if (token === _scanToken) setMsg("扫描进度查询失败"); });
+  };
+  tick();
+}
+// 分页取扫描结果：首页设元数据+立即渲染，其余页后台追加
+function fetchScanResult(scanId, offset, token) {
+  api(`/api/scan/result?scan_id=${scanId}&offset=${offset}&limit=200`).then(r => {
+    if (token !== _scanToken) return;
     if (r.error) { setMsg("" + r.error); return; }
-    state.images = r.images;
-    state.tagStats = r.tag_stats;
-    state.commonTags = r.common_tags;
-    state.activeTag = null;
-    state.selected = new Set();
-    state.selBeforeAll = null;
-    state.screenMap = {};
-    state.discardMap = {};
-    state.libPending = [];
-    document.getElementById("stImg").textContent = r.total_images;
-    document.getElementById("stTxt").textContent = r.total_txt;
-    document.getElementById("stTag").textContent = r.total_tags;
-    document.getElementById("stCommon").textContent = r.common_tags.length;
-    document.getElementById("commonWrap").style.display = r.common_tags.length ? "block" : "none";
-    // 一次性拉取所有标签的翻译+风格
-    fetchAllTranslations();
-    renderCommonTags();
-    renderAllTags();
-    applyFilter();
-    setMsg(`扫描完成：${r.total_images} 张图片，${r.total_tags} 种标签`);
-  });
+    if (offset === 0) {
+      state.tagStats = r.tag_stats;
+      state.commonTags = r.common_tags;
+      state.activeTag = null;
+      state.selected = new Set();
+      state.selBeforeAll = null;
+      state.screenMap = {};
+      state.discardMap = {};
+      state.libPending = [];
+      state.images = r.images;
+      _tagListLimit = 200;
+      document.getElementById("stImg").textContent = r.total_images;
+      document.getElementById("stTxt").textContent = r.total_txt;
+      document.getElementById("stTag").textContent = r.total_tags;
+      document.getElementById("stCommon").textContent = r.common_tags.length;
+      document.getElementById("commonWrap").style.display = r.common_tags.length ? "block" : "none";
+      renderCommonTags();
+      applyFilter();  // 首页网格立即渲染（虚拟滚动只画可视窗口）
+      fetchAllTranslations();  // 一次性批量翻译+风格（P0-2）
+    } else {
+      state.images = state.images.concat(r.images);  // 后台追加，不阻塞 UI
+      applyFilter();
+    }
+    if (r.has_more) {
+      fetchScanResult(scanId, offset + 200, token);
+    } else {
+      setMsg(`扫描完成：${r.total_images} 张图片，${r.total_tags} 种标签`);
+    }
+  }).catch(() => { if (token === _scanToken) setMsg("扫描结果获取失败"); });
 }
 
-// 分批获取翻译（每批 300 个）
+// P0-2：一次性批量翻译（替代 300/批 GET 长 URL + 每批全量渲染）
 function fetchAllTranslations() {
   const all = state.tagStats.map(t => t.tag);
-  const batch = 300;
-  const run = (i) => {
-    const chunk = all.slice(i, i + batch);
-    if (!chunk.length) { updateZhStats(); return; }
-    api("/api/translate/dict?tags=" + enc(chunk.join(","))).then(r => {
-      if (r.ok) {
-        for (const it of r.items) {
-          if (it.zh) state.zhMap[it.en] = it.zh;
-          state.styleMap[it.en] = {group: it.group, cat: it.cat, color: it.color, matched: it.matched};
-        }
+  if (!all.length) return;
+  api("/api/translate/bulk", { method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({tags: all}) }).then(r => {
+    if (r.ok) {
+      for (const it of r.items) {
+        if (it.zh) state.zhMap[it.en] = it.zh;
+        state.styleMap[it.en] = {group: it.group, cat: it.cat, color: it.color, matched: it.matched};
       }
-      renderAllTags();
-      run(i + batch);
-    }).catch(() => { renderAllTags(); updateZhStats(); });  // B6：网络异常不中断链，统计兜底更新
-  };
-  run(0);
+    }
+    scheduleRenderTags();  // P0-3b：渲染合并到下一帧
+  }).catch(() => scheduleRenderTags());  // 网络异常不中断，兜底渲染
   // 回填全部本地翻译缓存（含非数据集标签：输入框新增/历史翻译），刷新后不丢失
   api("/api/translate/cache").then(r => {
     if (r.ok && r.cache) Object.assign(state.zhMap, r.cache);
-    renderAllTags();
+    scheduleRenderTags();
   });
 }
 function updateZhStats() {
@@ -1151,7 +1190,7 @@ function deleteCommonTag(tag) {
   pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]})), commonDiscard: [...state.commonDiscard]});
   all.forEach(img => { if (img.tags.includes(tag)) img.tags = img.tags.filter(x => x !== tag); });
   if (!state.commonDiscard.includes(tag)) state.commonDiscard.push(tag);
-  rescanStats(); renderCommonTags(); renderCommonDiscard(); renderAllTags(); renderGrid(); renderEditor();
+  rescanStats(); renderCommonDiscard(); renderEditor();
   setMsg(`共同标签 ${tag} 已移入共同丢弃区（点击可放回）`);
 }
 // 点击丢弃区 chip：放回所有图片
@@ -1161,7 +1200,7 @@ function restoreCommonTag(tag) {
   pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]})), commonDiscard: [...state.commonDiscard]});
   state.commonDiscard = state.commonDiscard.filter(x => x !== tag);
   all.forEach(img => { if (!img.tags.includes(tag)) img.tags.push(tag); });
-  rescanStats(); renderCommonTags(); renderCommonDiscard(); renderAllTags(); renderGrid(); renderEditor();
+  rescanStats(); renderCommonDiscard(); renderEditor();
   setMsg(`共同标签 ${tag} 已放回所有图片`);
 }
 // 全部放回
@@ -1172,7 +1211,7 @@ function restoreAllCommon() {
   const tags = [...state.commonDiscard];
   state.commonDiscard = [];
   all.forEach(img => { tags.forEach(t => { if (!img.tags.includes(t)) img.tags.push(t); }); });
-  rescanStats(); renderCommonTags(); renderCommonDiscard(); renderAllTags(); renderGrid(); renderEditor();
+  rescanStats(); renderCommonDiscard(); renderEditor();
   setMsg(`已放回 ${tags.length} 个共同标签`);
 }
 // 丢弃区 chip ✕：彻底移除（不可再放回，可撤销）
@@ -1184,11 +1223,13 @@ function removeCommonDiscard(tag) {
   setMsg(`已彻底移除共同标签 ${tag}（可撤销）`);
 }
 
+let _tagListLimit = 200;  // P0-3d：只渲染前 200 条，底部「加载更多」
 function renderAllTags() {
   const q = document.getElementById("tagSearch").value.trim().toLowerCase();
   const list = state.tagStats.filter(t => !q || t.tag.toLowerCase().includes(q));
   const el = document.getElementById("allTags");
-  el.innerHTML = list.slice(0, 2000).map(t => {
+  const shown = list.slice(0, _tagListLimit);
+  el.innerHTML = shown.map(t => {
     const zh = zhOf(t.tag);
     const active = state.activeTag === t.tag ? "active" : "";
     // 批量删除模式：行首显示勾选框
@@ -1200,7 +1241,17 @@ function renderAllTags() {
       <span class="tag-count">${t.count}</span>
       ${state.batchMode ? "" : `<span class="del-x" data-dtag="${t.tag.replace(/"/g,'&quot;')}" title="从所有图片删除此标签（移入丢弃区，可放回）">✕</span>`}
     </div>`;
-  }).join("") || `<div style="padding:10px;color:var(--text-sub);">无匹配标签</div>`;
+  }).join("")
+    + (list.length > shown.length
+      ? `<div style="padding:10px;text-align:center;"><button class="btn" style="font-size:12px;padding:4px 14px;" onclick="_tagListLimit+=500;renderAllTags()">加载更多（剩 ${list.length - shown.length} 条）</button></div>`
+      : "")
+    || `<div style="padding:10px;color:var(--text-sub);">无匹配标签</div>`;
+}
+// P0-3d：搜索框 150ms 防抖（不再每键入渲染全列表）
+let _tagSearchTimer = null;
+function debounceTagSearch() {
+  clearTimeout(_tagSearchTimer);
+  _tagSearchTimer = setTimeout(renderAllTags, 150);
 }
 
 // ---------- 侧栏批量添加（全部图片添加同一标签） ----------
@@ -1211,19 +1262,19 @@ function batchAddTag() {
   inp.value = "";
   const all = state.images;
   if (!all.length) { setMsg("没有图片"); return; }
-  // 词库优先匹配（与输入框一致：英文忽略下划线 / 中文匹配翻译）；未命中原样添加
-  const hit = matchLibTag(raw);
-  const tag = hit ? hit.en : raw;
-  pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
-  let added = 0;
-  all.forEach(img => {
-    if (!img.tags.includes(tag)) { img.tags.push(tag); added++; }
+  // P0-8：词库懒加载（首次才拉），词库优先匹配（与输入框一致：英文忽略下划线 / 中文匹配翻译）；未命中原样添加
+  ensureLibLoaded().then(() => {
+    const hit = matchLibTag(raw);
+    const tag = hit ? hit.en : raw;
+    pushUndo("mem", {images: all.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+    let added = 0;
+    all.forEach(img => {
+      if (!img.tags.includes(tag)) { img.tags.push(tag); added++; }
+    });
+    if (hit && hit.zh) state.zhMap[tag] = hit.zh;
+    rescanStats();
+    setMsg(`已为 ${added}/${all.length} 张图片添加标签 ${tag}（未保存，可撤销）`);
   });
-  if (hit && hit.zh) state.zhMap[tag] = hit.zh;
-  rescanStats();
-  renderGrid();
-  renderAllTags();
-  setMsg(`已为 ${added}/${all.length} 张图片添加标签 ${tag}（未保存，可撤销）`);
 }
 
 // ---------- 侧栏标签批量删除 ----------
@@ -1273,9 +1324,6 @@ function batchDeleteSelected() {
     });
   });
   rescanStats();
-  renderCommonTags();
-  renderAllTags();
-  renderGrid();
   renderEditor();
   state.batchMode = false;
   state.batchSel = new Set();
@@ -1296,9 +1344,6 @@ function deleteTagFromAll(tag) {
     }
   });
   rescanStats();
-  renderCommonTags();
-  renderAllTags();
-  renderGrid();
   renderEditor();
   setMsg(`已从 ${removed} 张图片移除标签 ${tag}（已移入丢弃区，可放回）`);
 }
@@ -1316,27 +1361,116 @@ function applyFilter() {
     : state.images;
   renderGrid();
 }
-function renderGrid() {
+// ---------- P0-3c 虚拟滚动：只渲染可视窗口（~40 张），不再全量重建 1500 个 DOM ----------
+let _gCols = 0, _gColW = 0, _gRowH = 0;   // 当前列数 / 列宽 / 行距（卡片高+gap）
+let _gPool = new Map();                    // path -> 卡片元素（当前窗口）
+let _gCardHtml = new WeakMap();            // 元素 -> 最近一次 innerHTML（免重复重建）
+let _gRafPending = false;                  // rAF 渲染合并标记
+
+function layoutGrid() {
+  const main = document.getElementById("main");
+  const w = main.clientWidth - 28;  // #main padding 14×2
+  const minw = 168, gap = 14;
+  _gCols = Math.max(1, Math.floor((w + gap) / (minw + gap)));
+  _gColW = Math.floor((w - gap * (_gCols - 1)) / _gCols);
+  _gRowH = _gColW + gap;  // 方形卡片 + 垂直 gap
+}
+
+function cardHTML(img) {
+  const sel = state.selected.has(img.path) ? "selected" : "";
+  const disc = (state.discardMap[img.path] || []).length;
+  const screened = !!state.screenMap[img.path];
+  return `<div class="card ${sel}" data-path="${img.path.replace(/"/g,'&quot;')}">
+    <img src="${thumbURL(img.path)}" loading="lazy" />
+    ${disc ? `<div class="screen-dot" title="丢弃区有 ${disc} 个标签，点击底部丢弃区可放回">${disc}</div>` : screened ? `<div class="screen-dot done" title="已初筛（无待处理）">✓</div>` : ""}
+    <div class="meta">
+      <span class="name" title="${escHtml(img.name)}">${escHtml(img.name)}</span>
+      <span class="badge ${img.has_txt ? "" : "no-txt"}">${img.has_txt ? img.count + " 标签" : "无txt"}</span>
+    </div>
+  </div>`;
+}
+
+function paintWindow() {
   const grid = document.getElementById("grid");
-  document.getElementById("emptyHint").style.display = state.images.length ? "none" : "block";
-  if (!state.filtered.length) {
-    grid.innerHTML = `<div class="empty-hint">无匹配图片${state.activeTag ? `（标签: ${state.activeTag}）` : ""}</div>`;
+  const inner = document.getElementById("gridInner");
+  const empty = document.getElementById("gridEmpty");
+  if (!_gCols) layoutGrid();
+  const list = state.filtered;
+  if (!state.images.length) {
+    grid.style.height = "0px";
+    inner.style.display = "none";
+    empty.style.display = "none";
+    _gPool.forEach(el => el.remove());
+    _gPool.clear();
     return;
   }
-  grid.innerHTML = state.filtered.map(img => {
-    const sel = state.selected.has(img.path) ? "selected" : "";
-    const disc = (state.discardMap[img.path] || []).length;
-    const screened = !!state.screenMap[img.path];
-    return `<div class="card ${sel}" data-path="${img.path.replace(/"/g,'&quot;')}">
-      <img src="${thumbURL(img.path)}" loading="lazy" />
-      ${disc ? `<div class="screen-dot" title="丢弃区有 ${disc} 个标签，点击底部丢弃区可放回">${disc}</div>` : screened ? `<div class="screen-dot done" title="已初筛（无待处理）">✓</div>` : ""}
-      <div class="meta">
-        <span class="name" title="${escHtml(img.name)}">${escHtml(img.name)}</span>
-        <span class="badge ${img.has_txt ? "" : "no-txt"}">${img.has_txt ? img.count + " 标签" : "无txt"}</span>
-      </div>
-    </div>`;
-  }).join("");
+  if (!list.length) {
+    grid.style.height = "0px";
+    inner.style.display = "none";
+    empty.style.display = "block";
+    empty.innerHTML = `<div class="empty-hint">无匹配图片${state.activeTag ? `（标签: ${escHtml(state.activeTag)}）` : ""}</div>`;
+    _gPool.forEach(el => el.remove());
+    _gPool.clear();
+    return;
+  }
+  empty.style.display = "none";
+  inner.style.display = "grid";
+  inner.style.gridTemplateColumns = `repeat(${_gCols}, ${_gColW}px)`;
+  const main = document.getElementById("main");
+  const rows = Math.ceil(list.length / _gCols);
+  grid.style.height = (rows * _gRowH) + "px";
+  const firstRow = Math.max(0, Math.floor(main.scrollTop / _gRowH) - 1);
+  const first = firstRow * _gCols;
+  const last = Math.min(list.length, first + (Math.ceil(main.clientHeight / _gRowH) + 2) * _gCols);
+  inner.style.transform = `translateY(${firstRow * _gRowH}px)`;
+  // 复用节点：窗口内只更新 src/class/meta，新增 append，移出窗口 remove
+  const keep = new Set();
+  for (let i = first; i < last; i++) {
+    const img = list[i];
+    keep.add(img.path);
+    let el = _gPool.get(img.path);
+    if (!el) {
+      const div = document.createElement("div");
+      div.innerHTML = cardHTML(img);
+      el = div.firstElementChild;
+      _gPool.set(img.path, el);
+      _gCardHtml.set(el, div.innerHTML);
+      inner.appendChild(el);
+    } else {
+      const html = cardHTML(img);
+      if (_gCardHtml.get(el) !== html) {
+        el.innerHTML = html;
+        _gCardHtml.set(el, html);
+      }
+    }
+  }
+  for (const [p, el] of _gPool) {
+    if (!keep.has(p)) { el.remove(); _gPool.delete(p); }
+  }
+  // 顺序校验：现有卡片顺序与列表不一致时按序重排（仅筛选变化/向上滚动时发生）
+  const kids = Array.from(inner.children);
+  let ok = kids.length === last - first;
+  if (ok) {
+    for (let i = 0; i < kids.length; i++) {
+      if (kids[i] !== _gPool.get(list[first + i].path)) { ok = false; break; }
+    }
+  }
+  if (!ok) {
+    for (let i = first; i < last; i++) inner.appendChild(_gPool.get(list[i].path));
+  }
+}
+
+function renderGrid() {
+  document.getElementById("emptyHint").style.display = state.images.length ? "none" : "block";
+  layoutGrid();
+  paintWindow();
   renderEditor();
+}
+// P0-3b：渲染合并到下一帧（消除 rescanStats→renderAllTags+renderGrid 的重复重建）
+function scheduleRenderTags() {
+  if (_gRafPending) return;
+  _gRafPending = true;
+  requestAnimationFrame(() => { _gRafPending = false; renderAllTags(); renderGrid(); });
 }
 
 // 图片选择：默认单击=单选；按住 Ctrl 单击=多选 toggle（仿常见文件管理器交互）
@@ -1350,7 +1484,11 @@ function toggleSelect(path, ctrlKey) {
     state.selected.clear();
     state.selected.add(path);
   }
-  renderGrid();
+  // P0-3a：O(1) 选中态切换——只切 class，不重建网格 DOM（窗口外卡片重绘时自然带正确 class）
+  document.querySelectorAll("#grid .card.selected").forEach(el => el.classList.remove("selected"));
+  const el = document.querySelector('#grid .card[data-path="' + CSS.escape(path) + '"]');
+  if (el) el.classList.add("selected");
+  renderEditor();
 }
 function clearSelection() { state.selected.clear(); state.selBeforeAll = null; state.libPending = []; renderGrid(); }
 // 全选当前筛选结果（再次点击则取消全选）
@@ -1462,7 +1600,7 @@ function addTagToSel(en, zh) {
   sel.forEach(img => { if (!img.tags.includes(en)) { img.tags.push(en); added++; } });
   if (zh) state.zhMap[en] = zh;
   rescanStats();
-  renderGrid();
+  renderEditor();  // 编辑条 chips 立即显示新标签
   setMsg(added ? `已添加标签: ${en}${zh ? "（" + zh + "）" : ""}` : `标签已存在: ${en}`);
 }
 
@@ -1474,28 +1612,30 @@ function addTagManual() {
   const sel = state.images.filter(img => state.selected.has(img.path));
   if (!sel.length) { setMsg("请先选择图片，再添加标签"); return; }
 
-  // 1. 词库优先匹配（英文忽略下划线 / 中文匹配翻译）
-  const hit = matchLibTag(raw);
-  if (hit) {
-    addTagToSel(hit.en, hit.zh || "");
-    return;
-  }
-  // 2. 中文未命中词库 → 自动翻译成英文标签
-  if (/[\u4e00-\u9fff]/.test(raw)) {
-    setMsg(`正在转换中文标签: ${raw}...`);
-    api("/api/translate/llm", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tags: [raw], to_en: true}) }).then(r => {
-      const en = r.translated && r.translated[raw];
-      if (!en || en === raw) { setMsg("翻译失败，无法转换该中文标签"); return; }
-      // 规范化：小写 + 空格换下划线
-      const enNorm = en.trim().replace(/\s+/g, "_").toLowerCase();
-      addTagToSel(enNorm, raw);
-    }).catch(() => setMsg("翻译失败，请检查 DeepSeek API Key"));
-    return;
-  }
-  // 3. 英文：规范化（空格→下划线）后添加，自动附中文翻译（词典优先 → LLM 兜底）
-  const enNorm = raw.replace(/\s+/g, "_").toLowerCase();
-  addTagToSel(enNorm, "");
-  autoTranslateTag(enNorm);
+  // P0-8：词库懒加载（首次才拉），1. 词库优先匹配（英文忽略下划线 / 中文匹配翻译）
+  ensureLibLoaded().then(() => {
+    const hit = matchLibTag(raw);
+    if (hit) {
+      addTagToSel(hit.en, hit.zh || "");
+      return;
+    }
+    // 2. 中文未命中词库 → 自动翻译成英文标签
+    if (/[\u4e00-\u9fff]/.test(raw)) {
+      setMsg(`正在转换中文标签: ${raw}...`);
+      api("/api/translate/llm", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({tags: [raw], to_en: true}) }).then(r => {
+        const en = r.translated && r.translated[raw];
+        if (!en || en === raw) { setMsg("翻译失败，无法转换该中文标签"); return; }
+        // 规范化：小写 + 空格换下划线
+        const enNorm = en.trim().replace(/\s+/g, "_").toLowerCase();
+        addTagToSel(enNorm, raw);
+      }).catch(() => setMsg("翻译失败，请检查 DeepSeek API Key"));
+      return;
+    }
+    // 3. 英文：规范化（空格→下划线）后添加，自动附中文翻译（词典优先 → LLM 兜底）
+    const enNorm = raw.replace(/\s+/g, "_").toLowerCase();
+    addTagToSel(enNorm, "");
+    autoTranslateTag(enNorm);
+  });
 }
 
 // 手动 ✕ 删除：从原标签移除并移入该图丢弃区（与初筛自动丢弃一致，点击丢弃区可放回）
@@ -1510,7 +1650,7 @@ function removeTagFromSelection(tag) {
     }
   });
   rescanStats();  // G2：✕ 删除后刷新侧栏统计
-  renderGrid();
+  renderEditor();
   setMsg(`已移除标签 ${tag}（丢弃区可放回）`);
 }
 
@@ -1525,7 +1665,7 @@ function restoreDiscarded(imgPath, tag) {
   if (!img.tags.includes(tag)) img.tags.push(tag);
   rescanStats();  // G2：放回后刷新侧栏统计
   setMsg(`已放回标签: ${tag}（${img.name}）`);
-  renderGrid();
+  renderEditor();
 }
 
 // 丢弃区 ✕：彻底移除该标签（从丢弃区删除，不再放回原图）
@@ -1587,7 +1727,7 @@ function commitEditTag(oldTag, newTag) {
     }
   });
   setMsg(`标签已修改: ${oldTag} → ${newTag}（未保存）`);
-  renderGrid();
+  scheduleRenderTags();
   // 自动翻译新标签（词典优先，未命中走 LLM）
   autoTranslateTag(newTag);
 }
@@ -1599,7 +1739,7 @@ function autoTranslateTag(tag) {
     if (item && item.zh) {
       state.zhMap[tag] = item.zh;
       updateZhStats();
-      renderAllTags(); renderCommonTags(); renderGrid();
+      renderCommonTags(); scheduleRenderTags();
       setMsg(`新标签已自动翻译: ${tag} → ${item.zh}`);
       return;
     }
@@ -1609,7 +1749,7 @@ function autoTranslateTag(tag) {
       if (zh && zh !== tag) {
         state.zhMap[tag] = zh;
         updateZhStats();
-        renderAllTags(); renderCommonTags(); renderGrid();
+        renderCommonTags(); scheduleRenderTags();
       }
     });
   });
@@ -1706,7 +1846,6 @@ function deleteCommon() {
     setMsg(`已删除 ${state.commonTags.length} 个共同标签（已备份）`);
     state.commonTags = [];
     rescanStats();
-    renderGrid();
   });
 }
 
@@ -1718,14 +1857,17 @@ function toggleLibPanel() {
   const b1 = document.getElementById("libToggleBtn");
   if (b1) b1.textContent = state.libOpen ? "词库 ▲" : "词库";
   if (state.libOpen) {
-    if (!state.libItems.length) loadLibAll();
+    if (!state.libItems.length) ensureLibLoaded();  // P0-8：首次打开才拉词库
     else { renderLibCats(); renderSubLibCats(); renderLibList(); }
   }
 }
 
-// 加载全部词库条目（一次加载，分类切换本地渲染，不再反复请求）
-function loadLibAll() {
-  api("/api/taglib").then(r => {
+// P0-8：词库懒加载（启动不拉 0.73MB；首次添加标签/打开词库面板才拉，之后缓存）
+let _libLoading = null;
+function ensureLibLoaded() {
+  if (state.libItems.length) return Promise.resolve();
+  if (_libLoading) return _libLoading;
+  _libLoading = api("/api/taglib").then(r => {
     state.libItems = r.items || [];
     if (!state.libItems.length) { setMsg("词库未加载（taglib/taglib.yaml 不存在）"); return; }
     // 关键修复：词库条目同时填充 styleMap/zhMap——否则从词库添加的标签
@@ -1740,7 +1882,8 @@ function loadLibAll() {
     renderLibCats();
     renderSubLibCats();
     renderLibList();
-  });
+  }).finally(() => { _libLoading = null; });
+  return _libLoading;
 }
 
 // 渲染一级分类 tab（中文分类名 + 数量，横向滚动，仿 weilin group-tab）
@@ -1877,7 +2020,7 @@ function libPick(en) {
   let addedCount = 0;
   sel.forEach(img => { if (!img.tags.includes(en)) { img.tags.push(en); addedCount++; } });
   rescanStats();  // G2：词库添加后刷新侧栏统计
-  renderGrid();
+  renderEditor();
   setMsg(addedCount
     ? `已为 ${addedCount} 张图片添加标签: ${en}（未保存）`
     : `该标签已存在于所选图片中（未新增）`);
@@ -1911,7 +2054,7 @@ function doTranslate(tags, doneMsg) {
   const maybeFinish = () => {
     if (done >= batches.length) {
       updateZhStats();
-      renderAllTags(); renderCommonTags(); renderGrid();
+      renderCommonTags(); scheduleRenderTags();
       const finMsg = `翻译完成：新增 ${total} 条（已缓存）`;
       setMsg(finMsg);
       _lastTranslateLog = finMsg;  // 记录日志（3 分钟内重复点击回显）
@@ -2013,43 +2156,61 @@ function screenSelected() {
   screenCommonTags(pool, shown);
 }
 
-// 批量初筛：标签过多时分批判定（每批最多 100 个，防 prompt 超限导致失败），
-// verdicts 合并后应用到所有选中图片（删除→各自丢弃区）
+// P0-7 批量初筛流式：服务端每 100 标签一批并发 LLM，ndjson 逐批回推（实时进度）
 function screenCommonTags(sel, commonTags) {
   const userPrompt = getLlmUserPrompt();
-  const BATCH = 100;  // 每批标签数上限（557 标签会拆成 6 批）
-  const batches = [];
-  for (let i = 0; i < commonTags.length; i += BATCH) batches.push(commonTags.slice(i, i + BATCH));
   const allVerdicts = [];
-  const runBatch = (bi) => {
-    if (bi >= batches.length) {
-      // 全部批次完成 → 合并 verdicts 统一应用
-      const dels = allVerdicts.filter(v => v.action === "delete").map(v => v.tag);
-      if (dels.length) {
-        pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
-        sel.forEach(img => {
-          const toDrop = dels.filter(t => img.tags.includes(t));
-          if (!toDrop.length) return;
-          img.tags = img.tags.filter(t => !toDrop.includes(t));
-          state.discardMap[img.path] = [...(state.discardMap[img.path] || []), ...toDrop];
-        });
-      }
-      // 标记已筛（防呆）：池内所有图写入记录，快照=判定时的标签集合
-      sel.forEach(img => { state.screenMap[img.path] = {tags: commonTags, verdicts: allVerdicts}; });
-      renderGrid(); renderEditor();
-      setMsg(`初筛完成：判定 ${commonTags.length} 个标签，${dels.length} 个已移入丢弃区${batches.length > 1 ? `（${batches.length} 批）` : ""}`);
-      return;
+  let total = 0, done = 0, failed = 0;
+  const apply = () => {
+    // 全部批次完成 → 合并 verdicts 统一应用
+    const dels = allVerdicts.filter(v => v.action === "delete").map(v => v.tag);
+    if (dels.length) {
+      pushUndo("mem", {images: sel.map(img => ({path: img.path, tags: [...img.tags], disc: [...(state.discardMap[img.path] || [])]}))});
+      sel.forEach(img => {
+        const toDrop = dels.filter(t => img.tags.includes(t));
+        if (!toDrop.length) return;
+        img.tags = img.tags.filter(t => !toDrop.includes(t));
+        state.discardMap[img.path] = [...(state.discardMap[img.path] || []), ...toDrop];
+      });
     }
-    setMsg(`正在初筛（${commonTags.length} 标签，${batches.length - bi} 批剩余）...`);
-    api("/api/screen", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({images: [sel[0].path], tags: batches[bi], user_prompt: userPrompt, system_prompt: getActiveLlmPrompt()}) }).then(r => {
-      if (r.error) { setMsg(`${r.error}`); return; }
-      const res = r.results && r.results[0];
-      if (!res || !res.ok) { setMsg("初筛失败"); return; }
-      allVerdicts.push(...(res.verdicts || []));
-      runBatch(bi + 1);
-    }).catch(e => { setMsg("初筛请求失败: " + e.message); });
+    // 标记已筛（防呆）：池内所有图写入记录，快照=判定时的标签集合
+    sel.forEach(img => { state.screenMap[img.path] = {tags: commonTags, verdicts: allVerdicts}; });
+    scheduleRenderTags();
+    renderEditor();
+    setMsg(`初筛完成：判定 ${commonTags.length} 个标签，${dels.length} 个已移入丢弃区${failed ? `（${failed} 批失败）` : ""}`);
   };
-  runBatch(0);
+  // 流式请求：逐行读 ndjson，实时更新进度
+  fetch("/api/screen/stream", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({images: [sel[0].path], tags: commonTags, user_prompt: userPrompt, system_prompt: getActiveLlmPrompt()}),
+  }).then(resp => {
+    if (!resp.ok) {
+      return resp.json().then(r => setMsg("" + (r.error || "初筛失败"))).catch(() => setMsg("初筛失败"));
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    const pump = () => reader.read().then(({done: eof, value}) => {
+      if (eof) { apply(); return; }
+      buf += dec.decode(value, {stream: true});
+      let idx;
+      while ((idx = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line) continue;
+        let item;
+        try { item = JSON.parse(line); } catch (e) { continue; }
+        total = item.total || total;
+        done++;
+        if (item.ok) allVerdicts.push(...(item.verdicts || []));
+        else failed++;
+        setMsg(`正在初筛... ${done}/${total} 批完成`);
+      }
+      pump();
+    });
+    pump();
+  }).catch(e => setMsg("初筛请求失败: " + e.message));
 }
 
 // ---------- 原图查看器（复刻 Win11 照片查看器：打开 fit 适配、滚轮以鼠标为锚平滑缩放、左键 1:1 拖动） ----------
@@ -2191,7 +2352,7 @@ function restoreAllDiscarded() {
     delete state.discardMap[img.path];
   });
   rescanStats();
-  renderGrid();
+  renderEditor();
   setMsg(n ? `已回归 ${n} 个丢弃标签（可撤销）` : "所选图片无丢弃标签");
 }
 // 应用界面字号档位（xs/sm/default/lg → html data-font 属性控制 CSS 变量）
@@ -2388,6 +2549,16 @@ function bindDelegates() {
   document.getElementById("grid").addEventListener("dblclick", e => {
     const card = e.target.closest(".card");
     if (card && card.dataset.path) openViewer(card.dataset.path);
+  });
+  // P0-3c 虚拟滚动：滚动/窗口尺寸变化时重绘可视窗口（rAF 节流）
+  let _gScrollRaf = 0;
+  document.getElementById("main").addEventListener("scroll", () => {
+    if (_gScrollRaf) return;
+    _gScrollRaf = requestAnimationFrame(() => { _gScrollRaf = 0; paintWindow(); });
+  }, {passive: true});
+  window.addEventListener("resize", () => {
+    if (_gScrollRaf) return;
+    _gScrollRaf = requestAnimationFrame(() => { _gScrollRaf = 0; layoutGrid(); paintWindow(); });
   });
   // 原图查看器交互：滚轮缩放（照片查看器逻辑：以鼠标位置为锚，缩放平滑、内容跟手不跑偏）、左键拖动、双击关闭
   document.getElementById("viewer").addEventListener("wheel", e => {
@@ -2610,14 +2781,12 @@ function setMsg(m) { document.getElementById("stMsg").textContent = m; }
   // 清理历史测试污染的初筛模式记忆（二级菜单已删除，统一批量判定，无需记忆）
   try { localStorage.removeItem("loraScreenMode"); localStorage.removeItem("loraScreenModeV2"); } catch (e) {}
   bindDelegates();
-  // 预加载词库（输入框添加标签需优先匹配词库：英文忽略下划线 / 中文匹配翻译）
-  loadLibAll();
-  // 恢复最近文件夹
+  // P0-8：启动不自动扫描、不预载词库（0.73MB）——
+  // 显示上次目录，用户回车/点走才扫描；词库首次使用时懒加载（addTagManual/batchAddTag/toggleLibPanel）
   api("/api/settings").then(cfg => {
     if (cfg.recent_dirs && cfg.recent_dirs.length) {
       document.getElementById("folderInput").value = cfg.recent_dirs[0];
       document.getElementById("folderInput").placeholder = `最近: ${cfg.recent_dirs[0]}`;
-      scanFolder(); // 最近目录自动扫描（无需输入/回车）
     }
     if (cfg.preview_size) state.previewSize = cfg.preview_size;
     else state.previewSize = 0;

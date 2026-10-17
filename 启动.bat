@@ -1,11 +1,11 @@
 @echo off
-chcp 65001 >nul
 rem ============================================
-rem LoRA 打标管理器 启动脚本
+rem LoRA Tag Manager startup script
+rem Prefer packaged exe, fall back to source mode
 rem ============================================
 cd /d "%~dp0"
-
-echo 正在启动 LoRA 打标管理器...
-start "" http://localhost:8765
-python server.py
-pause
+if exist "LoraTagManager.exe" (
+  start "" "LoraTagManager.exe"
+) else (
+  start "" pythonw desktop.py
+)
